@@ -6,21 +6,28 @@
 ## 1. Introduction
 
 ### 1.1 Purpose
+
 Describes what the system must do and the qualities it must have, so the team, instructor, and future contributors share one understanding.
 
 ### 1.2 Problem statement
+
 Restaurant information is spread across datasets with inconsistent formats, missing values, duplicate records, and different geographic representations. This makes it hard to search, compare, and explore restaurants across locations. The project builds an integrated data platform that standardizes this information and exposes it through a web application.
 
 ### 1.3 Objectives
+
 1. Integrate restaurant data from multiple sources into one centralized MySQL database on Azure.
 2. Build automated Bronze, Silver, and Gold pipelines with data-quality checks.
 3. Provide filtering, an interactive map, and natural-language search.
 4. Orchestrate the pipeline with Apache Airflow and deploy on Microsoft Azure.
+5. Document the system, including requirements, architecture, and user guides, following market and software engineering best practices.
+6. As students, learn and demonstrate skills obtained in data engineering, web development, and cloud deployment.
 
 ### 1.4 Scope
+
 In scope: pipeline, database, API, web app (filters, map, NLP search), deployment, documentation. Out of scope: see section 9.
 
 ### 1.5 Definitions
+
 - **Bronze / Silver / Gold:** raw, cleaned, and consumption-ready data layers.
 - **Quarantine:** a table holding invalid records and the reason they were rejected.
 - **Entity resolution:** deciding which records from different sources describe the same restaurant.
@@ -29,7 +36,7 @@ In scope: pipeline, database, API, web app (filters, map, NLP search), deploymen
 ## 2. Stakeholders
 
 | Stakeholder | Interest | Influence |
-|-------------|----------|-----------|
+| ------------- | ---------- | ----------- |
 | Diner / local resident | Find suitable restaurants quickly | High (primary user) |
 | Foreign visitor / expat | Discover local options in an unfamiliar city | High |
 | Data engineer / admin (the team) | Reliable, observable pipeline | High |
@@ -41,7 +48,7 @@ In scope: pipeline, database, API, web app (filters, map, NLP search), deploymen
 ## 3. User stories
 
 | ID | As a... | I want to... | So that... | Priority |
-|----|---------|--------------|-----------|----------|
+| ---- | --------- | -------------- | ----------- | ---------- |
 | US-01 | Diner | filter by country, city, and locality | I see only relevant places | Must |
 | US-02 | Diner | filter by cuisine | I find the food I want | Must |
 | US-03 | Diner | filter by price and minimum rating | I match budget and quality | Must |
@@ -85,7 +92,7 @@ flowchart LR
 ### 4.2 UC-03: Natural-language search (detailed)
 
 | Item | Description |
-|------|-------------|
+| ------ | ------------- |
 | Actor | Diner or Visitor; Hugging Face service (supporting) |
 | Preconditions | Database loaded; NLP adapter configured |
 | Trigger | User submits a free-text request |
@@ -95,6 +102,7 @@ flowchart LR
 | Notes | The model never produces executable SQL. Parameters are its only output. |
 
 ### 4.3 Other use cases (to be detailed in Sprint 1)
+
 - **UC-01 Search and filter:** user selects filters; system returns paginated, sortable results.
 - **UC-02 Explore on map:** user pans and zooms; markers cluster; selecting a marker shows details.
 - **UC-04 View details:** name, cuisines, locality, cost, rating, source.
@@ -104,7 +112,7 @@ flowchart LR
 ## 5. Functional requirements
 
 | ID | Requirement | Priority | Story |
-|----|-------------|----------|-------|
+| ---- | ------------- | ---------- | ------- |
 | **Search and filtering** | | | |
 | FR-S1 | Filter by country and city | Must | US-01 |
 | FR-S2 | Filter by locality | Should | US-01 |
@@ -147,7 +155,7 @@ flowchart LR
 Targets are initial and will be validated by measurement.
 
 | Category | Requirement |
-|----------|-------------|
+| ---------- | ------------- |
 | Performance | Typical filtered search returns in under 2 seconds (target); indexes on common filter columns |
 | Reliability | Failed pipeline tasks retry and fail loudly; re-runs are safe |
 | Data quality | Coordinates validated; invalid records quarantined; quality counts reported per run |
@@ -163,7 +171,7 @@ Targets are initial and will be validated by measurement.
 
 ## 7. Constraints and assumptions
 
-- Team of 6 students; build window about 15-30 Nov (**confirm the deadline:** "31 Nov" does not exist).
+- Team of 6 students; build window about 15-31 Nov, 2026.
 - Technology baseline: Python, MySQL on Azure, Airflow, FastAPI, React, Hugging Face.
 - Data must come from open or permitted sources.
 - The baseline dataset has limited geographic coverage; the product must state its coverage honestly.
@@ -172,7 +180,7 @@ Targets are initial and will be validated by measurement.
 ## 8. Open issues
 
 | ID | Question | Resolution path |
-|----|----------|-----------------|
+| ---- | ---------- | ----------------- |
 | OI-1 | Which additional source(s) | Spike S1 |
 | OI-2 | Airflow hosting | Spike S2 |
 | OI-3 | Hugging Face model and provider | Spike S3 |
@@ -187,11 +195,11 @@ Owner accounts and verification, B2B matching, in-app reviews, gap or saturation
 
 ## 10. Traceability
 
-Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (planned).
+Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned).
 
 ## 11. Change log
 
-| Date | Change |
-|------|--------|
+| Date       | Change       |
+|------      | --------     |
 | 2026-10-30 | v0.1 created |
-| 2026-10-30 | v0.2: aligned to team proposal; added admin stories, currency and Egypt coverage notes |
+| 2026-10-30 | v0.2: aligned to team proposal; added admin stories, currency and Egypt coverage notes        |

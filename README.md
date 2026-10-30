@@ -51,7 +51,7 @@ Out of scope for now: owner accounts, B2B matching, in-app reviews (see future w
 | Additional restaurant source (Overture Maps Places, Foursquare OS Places, or OpenStreetMap) | Extra coverage, including Egypt | **TBD** (Spike S1) |
 | Geographic data (boundaries, localities) | District and locality context | **TBD** (Spike S1) |
 
-Coverage note: the Zomato dataset is heavily concentrated in India and, as far as we know, does not include Egypt. Example queries using Cairo need an additional source. Licenses and attribution requirements are tracked in `docs/DATA_SOURCES.md` (planned) and `ATTRIBUTION.md` (planned).
+Coverage note: the Zomato dataset is heavily concentrated in India and, as far as we know, does not include Egypt. Example queries using Cairo need an additional source. Licenses and attribution requirements are tracked in `docs/DATA_SOURCES.md` (planned) and `docs/ATTRIBUTION.md` (planned).
 
 ## 5. Architecture at a glance
 
@@ -137,7 +137,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 10. Data licensing and attribution
 
-This project uses third-party data. Each source has its own license and attribution rules. Verify the terms from each provider before redistributing any data. Required notices will be kept in `ATTRIBUTION.md`.
+This project uses third-party data. Each source has its own license and attribution rules. Verify the terms from each provider before redistributing any data. Required notices will be kept in `docs/ATTRIBUTION.md`.
 
 ## 11. License
 

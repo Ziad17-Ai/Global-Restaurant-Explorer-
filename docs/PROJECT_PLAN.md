@@ -1,11 +1,11 @@
 # Project Plan
 
-
 ## 1. Purpose and objectives
 
 **Problem.** Restaurant data is spread across datasets with inconsistent formats, missing values, duplicates, and different geographic representations, which makes it hard to search, compare, and explore across locations.
 
 **Objectives**
+
 1. Integrate restaurant data from multiple sources into one centralized MySQL database on Azure.
 2. Build automated ETL pipelines using Bronze, Silver, and Gold layers.
 3. Implement data-quality checks and quarantine invalid records instead of silently dropping them.
@@ -15,6 +15,7 @@
 7. Document the system to the academy's standard.
 
 **Success criteria**
+
 - The pipeline runs end-to-end through Airflow and every rejected record is logged with a reason.
 - At least two sources are integrated, with source kept per record.
 - The three features work against real data through a public URL (or a demonstrated fallback if Azure access fails).
@@ -23,6 +24,7 @@
 ## 3. Scope tiers (MoSCoW)
 
 **Must (MVP)**
+
 - M1: Zomato dataset through Bronze (Azure Blob), Silver (cleaned MySQL tables), and Gold (views/indexes)
 - M2: At least one additional source integrated (decided in S1)
 - M3: Data-quality rules with a quarantine table
@@ -35,6 +37,7 @@
 - M10: Documentation, README, demo
 
 **Should**
+
 - Airflow deployed on an Azure Linux VM
 - Incremental loads (process only new or changed records)
 - Cross-source duplicate matching
@@ -43,6 +46,7 @@
 - Pipeline monitoring page
 
 **Could**
+
 - Virtual Network and private networking
 - Azure Monitor and Application Insights
 - Arabic NLP queries
@@ -64,7 +68,7 @@
 ## 5. Team and responsibilities
 
 | Member | Role |
-|--------|------|
+| -------- | ------ |
 | Ziad Ahmed El Shamy | TBD |
 | Ali Ahmed Ali Kassem | TBD |
 | Yehia Nader Ali | TBD |
@@ -73,6 +77,7 @@
 | Ziad Salah ElKady | TBD |
 
 **Suggested role areas to assign in Sprint 0** (each person owns one area and one test area):
+
 1. Ingestion and Bronze layer (Python, Blob Storage)
 2. Cleaning, Silver layer, quality rules
 3. Database schema, Gold layer, indexes (MySQL)
@@ -85,7 +90,7 @@ Everyone contributes to documentation and testing.
 ## 6. Spikes (open decisions)
 
 | ID | Question | Due | Decision criteria | Fallback |
-|----|----------|-----|-------------------|----------|
+| ---- | ---------- | ----- | ------------------- | ---------- |
 | S1 | Which additional source(s) and geographic data? | 17 Nov | Rows and category completeness for target cities (including Egypt), valid coordinates, license, ingestion effort | Overture Maps only |
 | S2 | Airflow: local Docker only, or Azure VM too? | Local by 18 Nov; VM decision 21 Nov | Setup time, reliability, cost, demo value | Airflow in Docker for the demo; scripts stay scheduler-agnostic |
 | S3 | Which Hugging Face model and provider? | 18 Nov | Correct extraction rate on 30-50 sample queries, JSON reliability, latency, free-tier limits, language support | Rule-based parser using the controlled vocabulary |
@@ -96,28 +101,33 @@ Everyone contributes to documentation and testing.
 ## 7. Iteration plan
 
 **Sprint 0: 30-31 Oct (documentation)**
+
 - Tasks: finalize and submit the five documents; create repository skeleton and board; assign roles; check Azure access (S4).
 - Deliverables: docs v0.2 submitted, repo structure, role assignments.
 
 **Break: 1-14 Nov (optional, no hard deliverables)**
+
 - Light prep only: install toolchains (Python, Node, Docker); one member verifies Azure credits and creates a resource group with a budget alert; one member inspects the Zomato file and lists its quirks (encoding, currencies, zero ratings, invalid coordinates).
 
 **Sprint 1: 15-21 Nov (data foundation and search backbone)**
+
 - Tasks: Zomato to Bronze, Silver, and MySQL (local first, then Azure); schema v1 scripts; quality rules and quarantine table; close S1 and start ingesting source 2; run S2 and S3; FastAPI filter endpoints; React skeleton with filters and list.
 - Deliverables: pipeline works end-to-end for Zomato; Azure database reachable; filter search works on real data.
 
 **Sprint 2: 22-28 Nov (product and deployment)**
+
 - Tasks: second source integrated; Gold views and indexes; map; NLP endpoint with fallback; Airflow DAG scheduled; deploy frontend and backend to Azure; tests; Should items as capacity allows. **Feature freeze 28 Nov.**
 - Deliverables: three features working on the deployed app.
 
 **Final: 29-30 Nov (hardening and delivery)**
+
 - Tasks: bug fixes only; finalize docs and README run instructions; demo rehearsal; record a backup demo video.
 - Deliverables: final submission, demo, retrospective notes.
 
 ## 8. Risk register
 
 | ID | Risk | Likelihood | Impact | Mitigation |
-|----|------|------------|--------|------------|
+| ---- | ------ | ------------ | -------- | ------------ |
 | R1 | Only about two weeks of real build time because of midterms | High | High | Tiered scope, cut rule, feature freeze 28 Nov, optional break prep |
 | R2 | Azure provisioning, credits, or cost problems | Medium | High | S4 first; budget alerts; local fallback for the demo |
 | R3 | Zomato data quirks (encoding, mixed currencies, zero ratings, invalid coordinates) take longer than planned | High | Medium | Inspect during break; define rules early; quarantine table |
@@ -138,9 +148,9 @@ Everyone contributes to documentation and testing.
 
 ## 10. Deliverables checklist
 
-- [ ] Project plan (this document)
-- [ ] Literature review
-- [ ] SRS and system design (requirements, use cases, architecture, data model)
+- [x] Project plan (this document)
+- [x] Literature review
+- [x] SRS and system design (requirements, use cases, architecture, data model)
 - [ ] Bronze, Silver, Gold pipeline and database
 - [ ] Airflow DAG
 - [ ] Web application with three features
