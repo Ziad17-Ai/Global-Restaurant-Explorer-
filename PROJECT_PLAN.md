@@ -1,7 +1,5 @@
 # Project Plan
 
-> **Status:** Draft v0.2, a living document. Items marked **TBD** will be set in the Sprint 0 meeting and revised at each sprint review.
-> **Last updated:** 2026-10-30
 
 ## 1. Purpose and objectives
 
@@ -21,19 +19,6 @@
 - At least two sources are integrated, with source kept per record.
 - The three features work against real data through a public URL (or a demonstrated fallback if Azure access fails).
 - A new team member can set up the project from the README alone.
-
-## 2. Calendar and constraints
-
-| Item | Date |
-|------|------|
-| Today / documentation deadline | 30 Oct (docs due 31 Oct) |
-| Break (midterms and study) | about 1-14 Nov (no required deliverables) |
-| Build window | 15 Nov - 30 Nov (about 16 days) |
-| Final deadline | End of day, "31 Nov" as stated |
-
-**Date check:** November has 30 days, so "31 Nov" does not exist. We assume **30 Nov** as the safe deadline. If the real date is 1 Dec, that is one extra buffer day. **Confirm with the academy.**
-
-**Consequence:** the real build time is roughly two weeks. The scope below is tiered so that the Must items fit and everything else is optional.
 
 ## 3. Scope tiers (MoSCoW)
 
