@@ -1,8 +1,8 @@
-# Global Restaurant Explorer Platform (working title)
+# Global Restaurant Explorer Platform
 
 > **Status:** Draft v0.2, a living document. We work iteratively (Agile), so items marked **TBD** are pending timeboxed spikes and may change during implementation. See `docs/PROJECT_PLAN.md` for how decisions are made.
 > **Last updated:** 2026-10-30
-> **Repository:** https://github.com/nhahub/NHA-5-083
+> **Repository:** <https://github.com/nhahub/NHA-5-083>
 
 > **Naming note:** the final name is TBD. "Global" overstates our data coverage (see section 4), and the name should not duplicate existing public projects (see `docs/LITERATURE_REVIEW.md`).
 
@@ -15,7 +15,7 @@ The data pipeline is the core of the project. The web app is the layer users int
 ## 2. Where to find each academy deliverable
 
 | Academy requirement | File(s) |
-|---------------------|---------|
+| --------------------- | --------- |
 | **Project Planning and Management** (objectives, scope, methodology, roles, sprints, risks, change log) | [`docs/PROJECT_PLAN.md`](docs/PROJECT_PLAN.md) |
 | **Literature Review** (related work, data sources review, technical background, positioning, references) | [`docs/LITERATURE_REVIEW.md`](docs/LITERATURE_REVIEW.md) |
 | **Requirements Gathering** (stakeholders, user stories, use cases, functional and non-functional requirements) | [`docs/SRS.md`](docs/SRS.md) |
@@ -46,7 +46,7 @@ Out of scope for now: owner accounts, B2B matching, in-app reviews (see future w
 ## 4. Data sources
 
 | Source | Role | Status |
-|--------|------|--------|
+| -------- | ------ | -------- |
 | Zomato restaurant dataset (Kaggle) | Baseline dataset | Decided |
 | Additional restaurant source (Overture Maps Places, Foursquare OS Places, or OpenStreetMap) | Extra coverage, including Egypt | **TBD** (Spike S1) |
 | Geographic data (boundaries, localities) | District and locality context | **TBD** (Spike S1) |
@@ -61,7 +61,7 @@ Sources -> Python ingestion -> Bronze (raw files in Azure Blob)
         -> SQL transformations -> Gold (search tables, views, indexes)
         -> FastAPI backend -> React web app (filters, map, NLP search)
 
-Apache Airflow orchestrates the pipeline. Hugging Face provides the NLP model.
+Apache Airflow orchestrates the pipeline. Hugging Face provides the NLP model/API.
 ```
 
 Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -69,7 +69,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ## 6. Tech stack
 
 | Layer | Technology | Priority |
-|-------|------------|----------|
+| ------- | ------------ | ---------- |
 | Pipeline | Python, Pandas, SQL | Must |
 | Database | MySQL on Azure Database for MySQL Flexible Server | Must |
 | Raw storage | Azure Blob Storage | Must |
@@ -87,10 +87,12 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 - **Prerequisites:** Python version, Node version, MySQL version, Docker (for local Airflow)
 - **Clone:**
+
   ```bash
   git clone https://github.com/nhahub/NHA-5-083.git
   cd NHA-5-083
   ```
+
 - **Configuration:** copy `.env.example` to `.env` and fill in database, Blob Storage, and Hugging Face values. Never commit `.env`.
 - **Database setup:** run the scripts in `sql/` in order (TBD)
 - **Run the pipeline:** TBD
@@ -125,7 +127,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ## 9. Team
 
 | Name | Role |
-|------|------|
+| ------ | ------ |
 | Ziad Ahmed El Shamy | TBD |
 | Ali Ahmed Ali Kassem | TBD |
 | Yehia Nader Ali | TBD |
