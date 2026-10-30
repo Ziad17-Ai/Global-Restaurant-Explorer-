@@ -55,7 +55,7 @@ Coverage note: the Zomato dataset is heavily concentrated in India and, as far a
 
 ## 5. Architecture at a glance
 
-```
+```dsconfig
 Sources -> Python ingestion -> Bronze (raw files in Azure Blob)
         -> Clean, standardize, validate -> Silver (MySQL tables) + quarantine table
         -> SQL transformations -> Gold (search tables, views, indexes)
@@ -102,7 +102,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 8. Repository structure (proposed)
 
-```
+```dsconfig
 /
 ├── README.md
 ├── CONTRIBUTING.md
