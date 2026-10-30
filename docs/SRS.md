@@ -1,6 +1,6 @@
 # Software Requirements Specification (SRS)
 
-> **Status:** Draft v0.2, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could).
+> **Status:** Draft v0.2, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could). <br>
 > **Last updated:** 2026-10-30
 
 ## 1. Introduction
