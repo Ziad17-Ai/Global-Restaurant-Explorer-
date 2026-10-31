@@ -61,7 +61,7 @@ jobs:
           cd sync-workspace
 
           git remote add source \
-            "https://x-access-token:${{ secrets.NHA_ACADEMY_REPO_TOKEN }}@github.com/${SOURCE_REPO}.git"
+            "https://x-access-token:${{ secrets.NHA_REPO_TOKEN }}@github.com/${SOURCE_REPO}.git"
 
           git fetch --prune --tags source \
             "+refs/heads/*:refs/remotes/source/*" \
@@ -104,7 +104,7 @@ jobs:
               echo "Destination branch is behind or identical to the selected source ref."
               echo "A fast-forward update is possible."
             else
-              echo "::error::The NHA Academy branch contains commits that are not present in the selected source ref."
+              echo "::error::The NHA branch contains commits that are not present in the selected source ref."
               echo "::error::This may mean someone pushed directly to the academic repository."
               echo ""
               git log --oneline --graph --decorate \
@@ -126,7 +126,7 @@ jobs:
           echo "  Commit: ${SOURCE_COMMIT}"
           echo "  To: ${{ vars.NHA_REPO }} @ ${{ inputs.destination_branch || 'main' }}"
 
-      - name: Push exact commit history to NHA Academy
+      - name: Push exact commit history to NHA
         if: inputs.dry_run == 'false'
         env:
           NHA_TOKEN: ${{ secrets.NHA_REPO_TOKEN }}
@@ -158,7 +158,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## NHA Academy sync result"
+            echo "## NHA sync result"
             echo ""
             echo "| Field | Value |"
             echo "|---|---|"
