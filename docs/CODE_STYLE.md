@@ -1,8 +1,13 @@
 # Code Style Guide
 
+> **Status:** Draft v0.6, a living document.
+> **Last updated:** 2026-11-18
+
+Keywords **MUST** and **SHOULD** follow their usual meaning. Every rule names how it is enforced: a tool (blocks the merge), or review (a human checks it).
+
 ## 1. Principles
 
-1. **Readable over clever.** Someone else will read this at 2 a.m (maybe, maybe not).
+1. **Readable over clever.** Someone else will read this code at 2 a.m. during an incident.
 2. **Consistent.** Follow the rules here, even where you prefer another style.
 3. **Automated.** Formatters and linters enforce style; reviews focus on logic.
 4. **Safe by default.** Parameterized SQL, no secrets in code, validated inputs.
@@ -17,28 +22,59 @@
 - TODO comments include an owner or issue: `# TODO(#42): handle currency conversion`.
 - Keep functions short and single-purpose. If a function needs a long comment to explain it, split it.
 
+### Repository layout
+
+The folders that the rules and CI refer to. If the repository skeleton differs, update this list rather than the rules.
+
+```text
+web/backend/     FastAPI app: routers/, services/, repositories/, schemas/, settings.py
+web/frontend/    React app: src/theme, src/api, src/components, src/hooks, src/map
+pipeline/        ETL modules (never import FastAPI)
+pipeline/dags/    Airflow DAG files (wiring only)
+sql/             Numbered SQL scripts
+tests/           pytest tests, mirroring web/backend/ and pipeline/
+docs/            Project documents (this guide, requirements, architecture)
+```
+
+### Data conventions
+
+These apply to Python, SQL, the API, and the frontend alike.
+
+- **Time:** all timestamps are UTC. In Python, use timezone-aware values (`datetime.now(UTC)`). Columns are named `<event>_at` (`ingested_at`).
+- **Coordinates:** latitude comes before longitude in variables, columns (`latitude`, `longitude`), and JSON. Silver stores them as `DECIMAL(9, 6)`; Gold map tables store one `POINT SRID 4326` column (section 4). GeoJSON uses `[lng, lat]` and Leaflet uses `[lat, lng]`; convert only at those boundaries, in one helper per language.
+- **Money:** `Decimal` in Python and `DECIMAL(p, s)` in SQL, never floats. Silver keeps the original amount and its ISO 4217 code (`avg_cost_for_two`, `currency_code`) and never overwrites them. At fetch time, standardization also computes a US dollar amount (`avg_cost_for_two_usd`) and stores the rate and its date (`fx_rate`, `fx_rate_date`). The rate comes from one source and is pinned per batch, so a re-run reproduces the same values. Filtering and sorting across countries use the USD column.
+- **Displaying prices (proposed, CS-11):** the API returns the original amount, its currency, and the USD amount. Conversion from USD to the local currency happens at request time using a daily-cached rate, never one external call per request, and the UI labels converted prices as approximate.
+- **Unrated places:** stored with a `NULL` rating, never `0`. Sources that encode "unrated" as `0` are converted during standardization.
+- **Provenance:** every Silver row keeps its source and batch keys (`source_id`, `batch_id`) and the source's own record key (`source_restaurant_id`).
+
 ## 3. Python (pipeline and FastAPI)
 
-**Tools:** Ruff for linting and formatting (replaces Black, isort, and flake8), pytest for tests.
+**Tools:** Ruff (lint and format), mypy (types), pytest (tests). Configuration is in section 12.
 
-| Topic | Rule |
-| ------- | ------ |
-| Style | PEP 8; line length 88 |
-| Types | Type hints on all function signatures |
-| Docstrings | Google style for public functions and classes (purpose, args, returns, raises) |
-| Imports | Standard library, third party, local; sorted by Ruff; no wildcard imports |
-| Logging | Use the `logging` module with module-level loggers; no `print` in committed code |
-| Errors | Raise specific exceptions; never use a bare `except:`; log with context, then re-raise or handle |
-| Config | Read from environment variables through one settings module; never hardcode credentials |
-| Paths | Use `pathlib.Path`, not string concatenation |
-| Pandas | Prefer vectorized operations; no chained assignment; name intermediate DataFrames clearly (`raw_df`, `clean_df`) |
-| FastAPI | Pydantic models for request and response schemas; routers per resource; dependencies for DB sessions; return proper status codes |
+| Topic | Rule | Enforced by |
+| ------- | ------ | ------------- |
+| Style | PEP 8; line length 88 | `ruff format --check`, Ruff `E`, `W` |
+| Version | Python 3.12 or newer | CI |
+| Types | Type hints on all function signatures; `mypy` passes | mypy, Ruff `ANN` |
+| Docstrings | Google style for public modules, functions, and classes (purpose, args, returns, raises) | Ruff `D` |
+| Imports | Standard library, third party, local; no wildcard imports | Ruff `I`, `F` |
+| Logging | `logging` with module-level loggers; no `print`; include `run_id` and `batch_id` in pipeline logs; never log secrets; log user query text only truncated | Ruff `T20`, review |
+| Errors | Raise specific exceptions; never a bare `except:`; log with context, then re-raise or handle | Ruff `E722`, `B`, review |
+| Config | Environment variables read through one settings module; never hardcode credentials | Ruff `S105`, `S106`, review |
+| Paths | `pathlib.Path`, not string concatenation | Ruff `PTH` |
+| Time | Timezone-aware datetimes only | Ruff `DTZ` |
+| Complexity | Cyclomatic complexity of 18 or less; no magic numbers | Ruff `C90`, `PLR2004` |
+| Pandas | Vectorized operations; no chained assignment; name DataFrames by content or layer (`raw_df`, `restaurants_df`, `silver_df`), never a bare `df`; pass `encoding` and `dtype` explicitly when reading files; never `to_sql(if_exists="replace")`, because it drops indexes and constraints | Ruff `PD`, review |
+| Layering | Routers call services, services call repositories. SQL appears only in repositories, in `pipeline/` load modules, and in `sql/` scripts. `pipeline/` never imports FastAPI; DAG files only import `pipeline/` | review |
+| FastAPI | Pydantic models for request and response schemas; routers per resource; one dependency that opens and closes the DB connection per request; routes that use PyMySQL are plain `def`, not `async def`, because PyMySQL blocks; proper status codes; see section 5 | review |
+| Dependencies | Pinned; API and Airflow use separate requirements files, because Airflow constraint files commonly conflict with an application stack | review, CI |
 
 **Example**
 
 ```python
+"""Rating validation for the Silver layer."""
+
 import logging
-from pathlib import Path
 
 import pandas as pd
 
@@ -46,38 +82,76 @@ logger = logging.getLogger(__name__)
 
 MIN_RATING = 0.0
 MAX_RATING = 5.0
+RULE_RATING_OUT_OF_RANGE = "rating_out_of_range"
 
 
-def split_valid_ratings(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Split rows into valid and invalid ratings.
+def split_valid_ratings(
+    restaurants_df: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split rows into valid rows and rejected rows with a rejection reason.
+
+    Unrated restaurants (missing rating) are valid and keep a NULL rating.
 
     Args:
-        df: Restaurants with a numeric `rating` column.
+        restaurants_df: Restaurants with a numeric `rating` column.
 
     Returns:
-        A tuple of (valid_rows, invalid_rows).
+        A tuple of (valid_df, rejected_df). `rejected_df` gains `rule_name`
+        and `reason` columns for the quarantine table.
     """
-    is_valid = df["rating"].between(MIN_RATING, MAX_RATING)
-    logger.info("Rating check: %d valid, %d invalid", is_valid.sum(), (~is_valid).sum())
-    return df[is_valid], df[~is_valid]
+    is_unrated = restaurants_df["rating"].isna()
+    is_in_range = restaurants_df["rating"].between(MIN_RATING, MAX_RATING)
+    is_valid = is_unrated | is_in_range
+
+    valid_df = restaurants_df[is_valid]
+    rejected_df = restaurants_df[~is_valid].assign(
+        rule_name=RULE_RATING_OUT_OF_RANGE,
+        reason=f"rating outside {MIN_RATING}-{MAX_RATING}",
+    )
+    logger.info("Rating check: %d valid, %d rejected", len(valid_df), len(rejected_df))
+    return valid_df, rejected_df
 ```
+
+### NLP adapter rules
+
+- We use a third-party open model hosted through Hugging Face Inference Providers. The repository contains no model training, fine-tuning, or self-hosting code.
+- The model ID and provider are configuration (environment variables), not constants in code. Which model was chosen, and its license, are recorded in the decision log (D-3), not in this guide.
+- Changing the model or provider means re-running the sample-query suite (section 9) before merge.
+- The prompt template lives in its own versioned file, not inline in code.
+- The model fills a `SearchParams` Pydantic model with `extra="forbid"`; it never writes SQL, and its output is never executed.
+- Adapters implement one `NLPAdapter` interface (`parse(query) -> SearchParams`), so the Hugging Face and rule-based implementations are swappable.
+- Every provider call sets a timeout, a maximum output size, and temperature 0. Limits are named constants or config values.
+- Input text has a maximum length, checked at the API boundary.
+- Parsed values are checked against the known vocabulary (countries, cities, localities, cuisines); unknown values are dropped or flagged.
+- On timeout, error, or invalid output, fall back to the rule-based parser.
+- The parse cache has a size bound and a TTL.
+- The endpoint is rate limited.
 
 ## 4. SQL (MySQL)
 
-| Topic | Rule |
-| ------- | ------ |
-| Keywords | UPPERCASE (`SELECT`, `JOIN`, `WHERE`) |
-| Names | `snake_case`; tables plural (`restaurants`, `cities`); columns singular |
-| Keys | Primary key `<table_singular>_id`; foreign keys use the same name as the referenced key |
-| Gold objects | Prefix `gold_` for views and tables built for the app |
-| Indexes | `idx_<table>_<columns>`; unique indexes `uq_<table>_<columns>` |
-| Joins | Explicit `JOIN ... ON`; never implicit comma joins |
-| Selecting | List columns explicitly; avoid `SELECT *` in application and Gold code |
-| Layout | One clause per line, indented joins and conditions |
-| Safety | Application code uses parameterized queries only; never build SQL by string formatting |
-| Scripts | Numbered, re-runnable files in `sql/` (for example `001_create_tables.sql`, `002_create_gold_views.sql`); use `CREATE ... IF NOT EXISTS` and clear comments |
+| Topic | Rule | Enforced by |
+| ------- | ------ | ------------- |
+| Engine and charset | InnoDB; `utf8mb4` with an explicit collation (`utf8mb4_0900_ai_ci`, the MySQL 8.0 default), set in the database-creation script | review |
+| Keywords | UPPERCASE (`SELECT`, `JOIN`, `WHERE`) | review |
+| Names | `snake_case`; tables plural (`restaurants`, `cities`); columns singular. ERD entities are singular, tables are plural | review |
+| Keys | Primary key `<name>_id`, where `<name>` is a short singular name that is clear from context (`batch_id` for `ingestion_batches`); foreign keys use the same name as the referenced key. Not strictly enforced: a reviewer checks that it is understandable | review |
+| Constraints | Foreign keys `fk_<table>_<column>` | review |
+| Booleans | Columns start with `is_` or `has_` (`has_table_booking`) | review |
+| Types | `DECIMAL(p, s)` with explicit precision for money (for example `DECIMAL(14, 2)`), ratings, and Silver coordinates (`DECIMAL(9, 6)`); `JSON` for raw payloads, not text | review |
+| Silver tables | No prefix. Operational tables: `data_quality_issues` (quarantine), `ingestion_batches`, `pipeline_runs`, `source_metadata` | review |
+| Gold objects | Prefix `gold_` for views and tables built for the app (a table, not a view, where a spatial index is needed) | review |
+| Indexes | `idx_<table>_<columns>`; unique indexes `uq_<table>_<columns>`; declared inside the `CREATE TABLE` statement | review |
+| Idempotent loads | Unique key on `(source_id, source_restaurant_id)`; load with `INSERT ... ON DUPLICATE KEY UPDATE` | review, test |
+| Joins | Explicit `JOIN ... ON`; never implicit comma joins | review |
+| Selecting | List columns explicitly; avoid `SELECT *` in application and Gold code | review |
+| Layout | One clause per line, indented joins and conditions | review |
+| Ordering | Every `ORDER BY` that feeds pagination ends with a unique tie-breaker | review |
+| Driver | PyMySQL, with `charset='utf8mb4'` and TLS enabled. Values are always passed separately (`cursor.execute(sql, params)`) with named `%(name)s` placeholders. For DataFrames, build them from `cursor.fetchall()`; `to_sql` and `read_sql` expect SQLAlchemy, which we do not use. PyMySQL has no pool; one connection per request is acceptable at this scale | review |
+| Safety | Application code uses parameterized queries only; never build SQL by string formatting | review, Ruff `S608` |
+| Scripts | Numbered files in `sql/` (`001_create_tables.sql`, `002_create_gold_views.sql`). There are no migrations: the schema is rebuilt, not altered. To change it, edit the numbered script, recreate the database, and reload from Bronze (Silver and Gold are derived data). Table scripts use `CREATE TABLE IF NOT EXISTS`; Gold view scripts use `CREATE OR REPLACE VIEW`. `sql/000_reset.sql` drops everything and is for development and demo databases only. Revisit this rule if data that Bronze cannot rebuild, such as `pipeline_runs` history, must survive a schema change. MySQL has no `IF NOT EXISTS` for indexes, columns, or views. Keep `;` out of comments and strings so simple script runners can split statements | review |
+| Spatial | Gold map tables hold `location POINT SRID 4326 NOT NULL` with a `SPATIAL INDEX`; rows without valid coordinates are not in them. Build every point the same way: `ST_SRID(POINT(longitude, latitude), 4326)`. `POINT(x, y)` takes longitude first, but WKT text with SRID 4326 is latitude first, and swapped coordinates raise no error. Radius search uses a bounding box on the index (`MBRContains`), then the exact `ST_Distance_Sphere` check (meters); the distance function alone does not use the index. Validate coordinate ranges before building a point | review, tests |
 
-**Example**
+**Example** (named `%(name)s` placeholders are the PyMySQL style)
 
 ```sql
 SELECT
@@ -90,37 +164,176 @@ JOIN locations AS l ON l.location_id = r.location_id
 JOIN cities AS c ON c.city_id = l.city_id
 WHERE c.city_name = %(city)s
   AND r.rating >= %(min_rating)s
-ORDER BY r.rating DESC
+ORDER BY r.rating DESC, r.restaurant_id ASC
+LIMIT %(limit)s OFFSET %(offset)s;
+```
+
+**Spatial example**
+
+```sql
+-- Load a point. POINT takes longitude first, then latitude.
+INSERT INTO gold_map_points (restaurant_id, name, location)
+VALUES (
+    %(restaurant_id)s,
+    %(name)s,
+    ST_SRID(POINT(%(longitude)s, %(latitude)s), 4326)
+) AS new_row
+ON DUPLICATE KEY UPDATE
+    name = new_row.name,
+    location = new_row.location;
+
+-- Radius search. The bounding box (from the helper below) uses the spatial
+-- index, and the distance check makes the result exact.
+SELECT
+    restaurant_id,
+    name
+FROM gold_map_points
+WHERE MBRContains(ST_GeomFromText(%(bounding_box_wkt)s, 4326), location)
+  AND ST_Distance_Sphere(
+        location,
+        ST_SRID(POINT(%(longitude)s, %(latitude)s), 4326)
+      ) <= %(radius_m)s
+ORDER BY restaurant_id ASC
 LIMIT %(limit)s;
 ```
 
-## 5. JavaScript / TypeScript (React)
+The bounding box comes from one helper, so the coordinate order is written once:
 
-**Tools:** ESLint and Prettier. TypeScript is preferred (decision D-7); if we use JavaScript, keep the same naming rules.
+```python
+"""Spatial helpers for radius search."""
+
+import math
+
+METERS_PER_DEGREE_LATITUDE = 111_320.0
+MAX_SEARCH_RADIUS_M = 50_000.0
+MAX_ABS_LATITUDE = 85.0
+MAX_ABS_LONGITUDE = 180.0
+BOX_MARGIN = 1.01
+
+
+def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
+    """Return a WKT rectangle that fully contains a search circle.
+
+    The text is latitude first, as MySQL expects for SRID 4326. The rectangle
+    is slightly larger than the circle, so the exact distance check must still
+    run after it. The antimeridian is not handled.
+
+    Args:
+        latitude: Circle center latitude in degrees.
+        longitude: Circle center longitude in degrees.
+        radius_m: Circle radius in meters.
+
+    Returns:
+        A closed POLYGON in WKT.
+
+    Raises:
+        ValueError: If a value is outside the supported range.
+    """
+    if abs(latitude) > MAX_ABS_LATITUDE or abs(longitude) > MAX_ABS_LONGITUDE:
+        raise ValueError("coordinates outside the supported range")
+    if not 0 < radius_m <= MAX_SEARCH_RADIUS_M:
+        raise ValueError("radius_m must be positive and within the maximum")
+
+    delta_lat = BOX_MARGIN * radius_m / METERS_PER_DEGREE_LATITUDE
+    delta_lon = delta_lat / math.cos(math.radians(latitude))
+    south, north = latitude - delta_lat, latitude + delta_lat
+    west, east = longitude - delta_lon, longitude + delta_lon
+    corners = [
+        (south, west),
+        (south, east),
+        (north, east),
+        (north, west),
+        (south, west),
+    ]
+    ring = ",".join(f"{lat} {lon}" for lat, lon in corners)
+    return f"POLYGON(({ring}))"
+```
+
+## 5. API conventions
 
 | Topic | Rule |
 | ------- | ------ |
-| Formatting | Prettier: 2 spaces, single quotes, semicolons, trailing commas |
-| Components | Function components with hooks; one component per file; `PascalCase` file and component names |
-| Hooks | Custom hooks start with `use` (`useRestaurantSearch`) |
-| Variables and functions | `camelCase`; constants `UPPER_SNAKE_CASE`; booleans start with `is`, `has`, or `should` |
-| Types | Explicit prop and API response types; avoid `any` |
-| State | Keep it local when possible; lift state only when shared |
-| API calls | Centralized in an `api/` module; base URL from environment variable; handle loading and error states |
-| Security | Never call the database from the browser; never place secrets in frontend code |
-| Accessibility | Labels on inputs, alt text on images, keyboard-reachable controls |
-| Styling | One approach for the project (decide in Sprint 0); no inline styles except for dynamic values |
+| Paths | Under `/api`; static segments lowercase `kebab-case` (`/api/data-quality-issues`); collections are plural nouns. No version prefix |
+| Parameters | Path and query parameters are `snake_case` (`/api/restaurants/{restaurant_id}`, `min_rating`) |
+| JSON | Keys and enum values are `snake_case` on request and response. No alias generators and no case conversion in the client |
+| Pagination | Collections take `limit` and `offset`. The default and maximum `limit` are named constants. Responses use `items`, `total`, `limit`, `offset` |
+| Errors | One error body schema (a Pydantic model) for every non-2xx response |
+| Status codes | 201 on create, 404 when missing, 422 on validation errors, 429 when rate limited |
+| OpenAPI | Every route sets `response_model`, `summary`, and `tags`; the generated schema is the API documentation |
 
-## 6. Airflow DAGs
+## 6. JavaScript (React)
+
+**Tools:** ESLint, Prettier. The project uses JavaScript with JSX; TypeScript is not used.
+
+| Topic | Rule | Enforced by |
+| ------- | ------ | ------------- |
+| Formatting | Prettier: 2 spaces, single quotes, semicolons, trailing commas | `prettier --check` |
+| Language | ES modules; components in `.jsx` files; `const` by default, never `var`; strict equality | ESLint `no-var`, `prefer-const`, `eqeqeq` |
+| Components | Function components with hooks; one component per file; `PascalCase` file and component names (`RestaurantCard.jsx`) | ESLint `react`, review |
+| Hooks | Custom hooks start with `use` (`useRestaurantSearch`) | ESLint `react-hooks` |
+| Variables and functions | `camelCase`; constants `UPPER_SNAKE_CASE`; booleans start with `is`, `has`, or `should` | ESLint `camelcase`, review |
+| Complexity | Cyclomatic complexity of 18 or less | ESLint `complexity` |
+| JSDoc | Required for complex code: exported functions in the `src/api/` module, custom hooks, components whose props are objects or callbacks, and any function with more than three parameters or a non-obvious return value. Use `@param`, `@returns`, `@throws`, and explain *why*, not *what*. Trivial components and one-line helpers need none. A JSDoc block that exists must be valid | ESLint `jsdoc/*` (required in `src/api/`, valid everywhere), review |
+| Data shapes | API request and response shapes are documented once as JSDoc `@typedef` in `src/api/types.js` and referenced from `@param` and `@returns`. No PropTypes (React 19 no longer checks them). Editor checking through `jsconfig.json` with `checkJs` is SHOULD | review |
+| API data | Fields from the API stay `snake_case` (`min_rating`) and are never converted in the client. When destructuring, rename to camelCase (`const { min_rating: minRating } = filters`). The OpenAPI schema is the source of truth; update the typedefs in the same pull request as any API change | ESLint `camelcase` (properties ignored), review |
+| State | Keep it local when possible; lift state only when shared | review |
+| API calls | Centralized in the frontend `src/api/` module; base URL from environment variable; handle loading and error states | review |
+| Security | Never call the database from the browser; never place secrets in frontend code | review, secret scan |
+| Accessibility | Labels on inputs, alt text on images, keyboard-reachable controls (including map markers); WCAG AA contrast | ESLint `jsx-a11y`, review |
+| Logging | No `console.*` in committed code | ESLint `no-console` |
+| Strings | User-facing text lives in one strings module, not inline, so Arabic and RTL can be added later | review |
+| Styling | Material UI with one theme; see section 6.1. No inline `style` except for dynamic values | ESLint, review |
+
+### 6.1 Styling and UI library
+
+**Decision (2026-11-18):** a component library with one theme is the only styling system. Material UI (MUI) v9 is the library. The aim is one obvious way to do each thing, so code written by any teammate or assisted tooling looks the same.
+
+**Pinned stack**:
+
+| Package | Version | Why |
+| --------- | --------- | ----- |
+| `react`, `react-dom` | 19.x | `react-leaflet` 5 requires React 19 |
+| `@mui/material`, `@mui/icons-material` | 9.x | Latest major at the time of writing; see warning below |
+| `@emotion/react`, `@emotion/styled` | as required by MUI | MUI's default styling engine; imported only by MUI, never directly |
+| `leaflet`, `react-leaflet` | 1.9.x, 5.x | Map |
+
+| Topic | Rule | Enforced by |
+| ------- | ------ | ------------- |
+| One library | Material UI only. No second UI or CSS framework (Mantine, Chakra, Ant, Bootstrap, Tailwind, styled-components). No `@mui/x-*` packages: MUI X Pro and Premium are commercial, so adding one needs a team decision and a license check (R7) | ESLint `no-restricted-imports` |
+| One theme | All colors, spacing, typography, breakpoints, and default component props live in `src/theme/theme.js` (`createTheme`). Components never hardcode hex colors, font sizes, or breakpoints | ESLint `no-restricted-syntax` (hex literals) |
+| Order of preference | 1) component props and variants; 2) `components` overrides in the theme for anything customized more than once; 3) the `sx` prop for one-off spacing and layout, using theme keys (`sx={{ p: 2, color: 'text.secondary' }}`); 4) `styled()` from `@mui/material/styles` for a reusable local component | review |
+| No raw CSS | No `.css` or `.scss` imports, except under `src/map/` for Leaflet. No `className` styling of our own components | ESLint `no-restricted-imports` |
+| No inline style | No `style` prop. Dynamic values go through `sx` | ESLint `react/forbid-dom-props` |
+| Imports | Import each component from its own path (`@mui/material/Button`, `@mui/icons-material/Search`), never the package barrel. Import `styled` from `@mui/material/styles`, never from Emotion | ESLint `no-restricted-imports` |
+| Layout | Use MUI layout components (`Stack`, `Box`, `Container`, `Grid`) rather than hand-written flex or grid CSS. Responsive values use the theme breakpoints | review |
+| Accessibility | Icon-only buttons need an `aria-label`; every input has a visible label or `aria-label`; do not remove focus outlines | ESLint `jsx-a11y` (DOM elements only), review |
+| RTL readiness | Prefer logical properties (`marginInlineStart`) over left and right, and keep text direction in the theme | review |
+| Reference component | `src/components/RestaurantCard.jsx` is the pattern to copy: theme tokens, `sx`, JSDoc, and renaming of API fields. Written in Sprint 1 | review |
+| Docs | Wireframes, token values, and screen inventory live in `docs/UI_UX.md`, not in this guide | review |
+
+**Warning for AI-assisted coding.** MUI has changed its APIs in most major versions, and v9 is recent, so generated code often uses older props and layout syntax. Deprecated props are removed in major releases; for example, `TransitionComponent` was dropped from `Accordion` in the v9 pre-releases. Check any generated MUI code against the documentation for the pinned major version, and prefer copying from the reference component.
+
+**Frontend folders** (inside `web/frontend/`; enforced by the lint overrides in section 12):
+
+- `src/theme/`: the theme, the only place that defines colors.
+- `src/api/`: API calls and `types.js`, with JSDoc required.
+- `src/components/`, `src/hooks/`: UI and custom hooks.
+- `src/map/`: Leaflet code and its CSS, the only place that may import CSS.
+
+## 7. Airflow DAGs
 
 - DAG files only wire tasks together; business logic lives in `pipeline/` modules that DAGs import.
 - `dag_id` in `snake_case` with a purpose (`restaurants_daily_etl`); tasks named by verb (`ingest_zomato`, `validate_silver`).
-- Every task is idempotent: running it twice gives the same result.
-- Set explicit `retries`, `retry_delay`, `catchup=False` (unless backfills are intended), and tags.
+- Every task is idempotent: running it twice gives the same result. Batch IDs are derived deterministically from source and logical date.
+- Set explicit `retries`, `retry_delay` (with exponential backoff), `execution_timeout`, `max_active_runs`, `catchup=False` (unless backfills are intended), and tags.
+- Pass paths and IDs between tasks, never DataFrames.
+- The `pipeline_runs` summary is written by a task that runs even when upstream tasks fail (`trigger_rule="all_done"`).
 - No secrets in DAG files; use Airflow connections or environment variables.
 - No heavy work at DAG parse time (no network or database calls at module level).
+- A CI test imports every DAG file and fails on import errors.
+- The Airflow major version is pinned to 3.x.
 
-## 7. Naming conventions summary
+## 8. Naming conventions summary
 
 | Item | Convention | Example |
 | ------ | ----------- | --------- |
@@ -128,35 +341,68 @@ LIMIT %(limit)s;
 | Python classes | `PascalCase` | `SearchService` |
 | Python constants | `UPPER_SNAKE_CASE` | `MAX_RATING` |
 | SQL tables and columns | `snake_case` | `restaurant_cuisines` |
-| React components | `PascalCase` | `RestaurantCard.tsx` |
+| SQL constraints | `fk_`, `idx_`, `uq_` prefixes | `fk_restaurants_location_id` |
+| SQL booleans | `is_` or `has_` prefix | `has_online_delivery` |
+| Gold objects | `gold_` prefix | `gold_map_points` |
+| API paths | lowercase `kebab-case` | `/api/data-quality-issues` |
+| API parameters, JSON keys, enum values | `snake_case` | `min_rating` |
+| Quality rule names | `snake_case` constants | `rating_out_of_range` |
+| Blob containers | lowercase letters, digits, hyphens (Azure rule) | `bronze` |
+| Blob paths | `<source>/<yyyy-mm-dd>/<batch_id>/<original_file>` | `zomato/2026-11-18/b0042/zomato.csv` |
+| React components | `PascalCase`, `.jsx` extension | `RestaurantCard.jsx` |
 | JS variables | `camelCase` | `selectedCity` |
-| Branches | `type/area-description` | `feat/api-nl-search` |
+| Branches | `type/area-description`; types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test` | `feat/backend-nl-search` |
+| Commits | Conventional Commits | `feat(backend): add nl search endpoint` |
 | Env variables | `UPPER_SNAKE_CASE` | `MYSQL_HOST` |
 | Airflow DAGs | `snake_case` | `restaurants_daily_etl` |
 
-## 8. Testing conventions
+## 9. Testing conventions
 
 - Python: pytest; files `test_<module>.py`; functions `test_<behavior>`; use small fixtures instead of real datasets.
-- Test data-quality rules with both valid and invalid examples.
-- Test the NLP layer with a fixed set of sample queries and expected parameters, including failures.
-- Frontend: tests for key components and the API module (tool TBD).
+- Every data-quality rule has tests with both valid and invalid examples.
+- Test the NLP layer with the fixed sample-query set from spike S3 (queries and expected parameters, including failures); it doubles as the regression suite.
+- Loads, upserts, and repository queries get integration tests against a real MySQL container (SHOULD), because idempotency cannot be proven with mocks.
 - A bug fix includes a test that fails before the fix.
+- Test files may relax some lint rules.
 
-## 9. Security checklist
+## 10. Security checklist
 
-- [ ] No secrets, tokens, or `.env` in the repository
+- [ ] No secrets, tokens, or `.env` in the repository; `.env.example` lists variable names only
+- [ ] Secret scanning runs in pre-commit and CI
 - [ ] All SQL parameterized
-- [ ] Inputs validated at the API boundary
+- [ ] Inputs validated at the API boundary, including a maximum length on NLP text
 - [ ] Model output validated and never executed
-- [ ] CORS and HTTPS configured
+- [ ] NLP endpoint rate limited
+- [ ] The application connects with a least-privilege, read-only database user; pipeline and application use separate accounts
+- [ ] TLS required for MySQL connections
+- [ ] CORS limited to an explicit origin allowlist; HTTPS everywhere
 - [ ] Dependencies pinned (`requirements.txt` or lock file, `package-lock.json`)
+- [ ] Dependency audits run in CI (`pip-audit`, `npm audit`) or through Dependabot
 
-## 10. Tooling configuration
+## 11. Git and CI
 
-**[`pyproject.toml`](./pyproject.toml)**, **[`.editorconfig`](./.editorconfig)**, **[`.prettierrc`](./.prettierrc.json)**, **[`.pre-commit-config.yaml`](./.pre-commit-config.yaml)**
+- `main` is protected: changes arrive by pull request with at least one review.
+- Commit messages follow Conventional Commits. Branch names follow section 8.
+- These checks MUST pass before merge (GitHub Actions):
 
-## 11. Change log
+| Check | Tool |
+| ------- | ------ |
+| Python lint and format | `ruff check`, `ruff format --check` |
+| Python types | `mypy` |
+| Python tests | `pytest` |
+| DAG import test | `pytest` (DAG import test) |
+| Frontend lint and format | ESLint, `prettier --check` |
+| Secret scan | secret-scanning tool (for example `gitleaks`) |
+
+Dependency audits run on the same pipeline but do not block a merge until the team agrees on a severity threshold.
+
+## 12. Change log
 
 | Date       | Change                                |
-|------      |--------                               |
+|------------|---------------------------------------|
 | 2026-10-30 | v0.2 created as an adoptable template |
+| 2026-11-18 | v0.3: added status header, enforcement columns, data conventions, API conventions, NLP adapter rules, Git and CI, reference configuration, and open items; fixed MySQL script rules (`IF NOT EXISTS` is not valid for views and indexes); corrected the Python example (unused import, bare `df`, unrated ratings, rejection reason); fixed typo and naming gaps |
+| 2026-11-18 | v0.4: JavaScript (D-7 closed) with JSDoc for complex code and a reference ESLint config; third-party open model for NLP (S3 chooses the model) |
+| 2026-11-18 | v0.5: styling decision (component library with one theme, Material UI v9 proposed), pinned frontend stack, section 6.1 with lint enforcement |
+| 2026-11-18 | v0.6: PyMySQL as the driver; no migrations (schema rebuilt from Bronze); spatial storage and radius search with tested examples; USD price normalization with original amounts kept; relaxed primary-key naming; repository layout; complexity aligned to 18; model choice moved to the decision log; CODEOWNERS dropped |
+| 2026-11-19 | v0.7: consolidated source layout under `web/backend/` and `web/frontend/`; moved frontend package and ESLint configuration into `web/frontend/`; removed frontend tests; added owned TBD-marker rules |

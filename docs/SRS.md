@@ -195,7 +195,7 @@ Owner accounts and verification, B2B matching, in-app reviews, gap or saturation
 
 ## 10. Traceability
 
-Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned).
+Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned). The test plan will cover Python, pipeline, backend, and SQL behavior only; frontend component tests are out of scope.
 
 ## 11. Change log
 

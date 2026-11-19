@@ -165,7 +165,7 @@ We do not claim to outperform commercial location-intelligence products. We clai
 10. Parmar, D. *zomato-ai-data-engineering-end-to-end-project.* GitHub. <https://github.com/darshilparmar/zomato-ai-data-engineering-end-to-end-project> [41](https://github.com/darshilparmar/zomato-ai-data-engineering-end-to-end-project)
 11. Kaggle. *Zomato Restaurants Dataset.* Add the exact dataset URL, uploader, version, retrieval date, and license page.
 12. Vendor pages: xmap.ai, Maptitude, TargomoLOOP, and HorecaStore Restaurant Site Finder. Add retrieval dates.
-13. ***TODO:*** Add 3–5 academic or technical references on entity resolution, data quality, medallion architecture, and constrained structured extraction.
+13. Entity resolution, data quality, medallion architecture, and constrained structured extraction require 3–5 additional academic or technical references before the literature review is complete.
 
 ## 7. Change log
 

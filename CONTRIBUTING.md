@@ -1,10 +1,12 @@
 # Contributing
 
+> **Status:** Draft v0.2, a living document. Coding rules are in [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md).
+
 ## 1. Workflow (GitHub Flow, kept simple)
 
 We have about two weeks of build time, so we keep the workflow light.
 
-1. `main` is always working and deployable. Nobody commits to it directly (allegedly?).
+1. `main` is always working and deployable. Nobody commits to it directly.
 2. Create a short-lived branch from `main` for each task.
 3. Open a pull request (PR) early, even if it is a draft.
 4. At least one teammate reviews before merging.
@@ -24,7 +26,7 @@ We have about two weeks of build time, so we keep the workflow light.
 | `test` | Tests only |
 | `chore` | Tooling, config, dependencies |
 
-Areas: `pipeline`, `sql`, `api`, `web`, `infra`, `docs`.
+Areas: `pipeline`, `sql`, `backend`, `frontend`, `web`, `infra`, `docs`.
 Example: `feat/pipeline-zomato-bronze-ingestion`
 
 ## 3. Commit messages (Conventional Commits)
@@ -39,7 +41,7 @@ Refs #12
 Examples:
 
 - `feat(pipeline): add Zomato CSV ingestion to Bronze`
-- `fix(api): handle unrated restaurants in rating filter`
+- `fix(backend): handle unrated restaurants in rating filter`
 - `docs(srs): add UC-06 rejected records`
 
 Rules: summary under 72 characters, no trailing period, one logical change per commit.

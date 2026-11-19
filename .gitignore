@@ -58,9 +58,9 @@ pnpm-debug.log*
 .npm/
 .yarn/
 .pnp.*
-web/dist/
-web/build/
-web/.vite/
+web/frontend/dist/
+web/frontend/build/
+web/frontend/.vite/
 
 # Local databases and application logs
 *.sqlite

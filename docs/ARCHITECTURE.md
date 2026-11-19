@@ -392,7 +392,7 @@ If Azure access or cost blocks any Must item, the fallback is local MySQL and Do
 | Raw storage | Azure Blob Storage | Decided |
 | Orchestration | Apache Airflow | Decided (hosting TBD, S2) |
 | Backend | FastAPI | Decided |
-| Frontend | React, Leaflet (JavaScript or TypeScript TBD) | Decided |
+| Frontend | React, Leaflet (JavaScript with JSX) | Decided |
 | NLP | Hugging Face Inference Providers | Decided (model TBD, S3) |
 | Hosting | Static Web Apps, App Service, Linux VM | Decided (VM Should) |
 | Version control | Git and GitHub | Decided |
@@ -422,9 +422,6 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | D-2 | Airflow hosting | S2 |
 | D-3 | Hugging Face model and provider | S3 |
 | D-4 | Cross-source matching method | Sprint 2 |
-| D-5 | Spatial indexing in MySQL | Sprint 1 |
-| D-6 | Currency handling | Sprint 1 |
-| D-7 | JavaScript vs TypeScript | Sprint 0 |
 
 ## 17. Change log
 

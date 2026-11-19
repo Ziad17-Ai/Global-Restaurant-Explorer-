@@ -27,10 +27,10 @@ The data pipeline is the core of the project. The web app is the layer users int
 | - DFD, sequence, activity, state, class diagrams | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), sections 3, 6-8, 10 |
 | - Deployment diagram, API outline | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), sections 12, 15 |
 | - UI/UX wireframes and guidelines | `docs/UI_UX.md` (planned) |
-| **Implementation: source code** | `pipeline/`, `api/`, `web/`, `sql/` |
+| **Implementation: source code** | `pipeline/`, `web/backend/`, `web/frontend/`, `sql/` |
 | Coding standards and naming conventions | [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) |
 | Version control, branching, collaboration | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
-| Testing and validation plan | `docs/TESTING.md` (planned) |
+| Testing and validation plan | `docs/TESTING.md` (planned; Python, pipeline, backend, and SQL tests only) |
 | Deployment and execution instructions | This file, section 7 |
 
 ## 3. Features
@@ -119,8 +119,9 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 │   ├── transform/
 │   └── quality/
 ├── sql/               (numbered schema and transformation scripts)
-├── api/               (FastAPI backend)
-├── web/               (React frontend)
+├── web/
+│   ├── backend/       (FastAPI backend)
+│   └── frontend/      (React frontend)
 └── tests/
 ```
 
