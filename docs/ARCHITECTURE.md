@@ -10,7 +10,7 @@
 - Serve filters, map, and NLP search through a thin FastAPI backend.
 - Keep the NLP provider swappable, with a rule-based fallback.
 - Constraints: 6 students, build window about 15-30 Nov, Azure credits and cost limits, open or permitted data only (see `docs/PROJECT_PLAN.md`).
-
+  
 ## 2. Architecture style
 
 - **Data:** Medallion (Bronze, Silver, Gold) batch pipeline orchestrated by Apache Airflow.
