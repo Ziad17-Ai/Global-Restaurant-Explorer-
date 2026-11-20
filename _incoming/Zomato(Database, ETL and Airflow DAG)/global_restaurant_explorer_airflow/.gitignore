@@ -1,0 +1,15 @@
+# Environment & secrets
+.env
+*.env.local
+
+# Python & test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local runtime & archives
+logs/
+*.zip
+.DS_Store
