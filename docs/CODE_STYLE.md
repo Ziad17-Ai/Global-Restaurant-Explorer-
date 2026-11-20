@@ -1,7 +1,7 @@
 # Code Style Guide
 
 > **Status:** Draft v0.6, a living document.
-> **Last updated:** 2026-11-18
+> **Last updated:** 2026-11-20
 
 Keywords **MUST** and **SHOULD** follow their usual meaning. Every rule names how it is enforced: a tool (blocks the merge), or review (a human checks it).
 
@@ -303,6 +303,7 @@ def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
 | One theme | All colors, spacing, typography, breakpoints, and default component props live in `src/theme/theme.js` (`createTheme`). Components never hardcode hex colors, font sizes, or breakpoints | ESLint `no-restricted-syntax` (hex literals) |
 | Order of preference | 1) component props and variants; 2) `components` overrides in the theme for anything customized more than once; 3) the `sx` prop for one-off spacing and layout, using theme keys (`sx={{ p: 2, color: 'text.secondary' }}`); 4) `styled()` from `@mui/material/styles` for a reusable local component | review |
 | No raw CSS | No `.css` or `.scss` imports, except under `src/map/` for Leaflet. No `className` styling of our own components | ESLint `no-restricted-imports` |
+| Custom CSS naming | Any custom or literal CSS class selector must use BEM naming: `.block`, `.block__element`, or `.block--modifier` (for example, `.map__control--active`). Do not rename or wrap third-party Leaflet selectors solely to apply this rule | review |
 | No inline style | No `style` prop. Dynamic values go through `sx` | ESLint `react/forbid-dom-props` |
 | Imports | Import each component from its own path (`@mui/material/Button`, `@mui/icons-material/Search`), never the package barrel. Import `styled` from `@mui/material/styles`, never from Emotion | ESLint `no-restricted-imports` |
 | Layout | Use MUI layout components (`Stack`, `Box`, `Container`, `Grid`) rather than hand-written flex or grid CSS. Responsive values use the theme breakpoints | review |
