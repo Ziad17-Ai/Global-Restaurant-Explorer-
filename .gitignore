@@ -49,18 +49,8 @@ data/*.jsonl
 *.sql.gz
 *.dump
 
-# Node.js and React
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-.npm/
-.yarn/
-.pnp.*
-web/frontend/dist/
-web/frontend/build/
-web/frontend/.vite/
+# Streamlit local secrets
+web/streamlit/.streamlit/secrets.toml
 
 # Local databases and application logs
 *.sqlite

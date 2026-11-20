@@ -26,7 +26,7 @@ We have about two weeks of build time, so we keep the workflow light.
 | `test` | Tests only |
 | `chore` | Tooling, config, dependencies |
 
-Areas: `pipeline`, `sql`, `backend`, `frontend`, `web`, `infra`, `docs`.
+Areas: `pipeline`, `sql`, `backend`, `streamlit`, `web`, `infra`, `docs`.
 Example: `feat/pipeline-zomato-bronze-ingestion`
 
 ## 3. Commit messages (Conventional Commits)

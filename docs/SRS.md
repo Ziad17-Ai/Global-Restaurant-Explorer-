@@ -96,7 +96,7 @@ flowchart LR
 | Actor | Diner or Visitor; Hugging Face service (supporting) |
 | Preconditions | Database loaded; NLP adapter configured |
 | Trigger | User submits a free-text request |
-| Main flow | 1. Frontend sends the text to the backend. 2. Backend sends it to the NLP adapter. 3. Adapter returns structured parameters (country, city, cuisine, price, rating, locality). 4. Backend validates the parameters against the schema and known values. 5. Backend runs a parameterized query. 6. Frontend shows results, map markers, and the interpreted filters. |
+| Main flow | 1. Streamlit sends the text to the backend. 2. Backend sends it to the NLP adapter. 3. Adapter returns structured parameters (country, city, cuisine, price, rating, locality). 4. Backend validates the parameters against the schema and known values. 5. Backend runs a parameterized query. 6. Streamlit shows results, map markers, and the interpreted filters. |
 | Alternate flows | A1. Service fails or times out: use the rule-based parser. A2. Output invalid: discard and use the rule-based parser. A3. Request ambiguous or unsupported: ask the user to clarify. A4. No results: suggest relaxing filters. |
 | Postconditions | Results shown; interpreted filters visible |
 | Notes | The model never produces executable SQL. Parameters are its only output. |
@@ -159,7 +159,7 @@ Targets are initial and will be validated by measurement.
 | Performance | Typical filtered search returns in under 2 seconds (target); indexes on common filter columns |
 | Reliability | Failed pipeline tasks retry and fail loudly; re-runs are safe |
 | Data quality | Coordinates validated; invalid records quarantined; quality counts reported per run |
-| Security | The frontend never connects to the database; backend uses parameterized queries; credentials in environment variables or Key Vault, never in the repository; HTTPS; database firewall restricted to authorized services |
+| Security | The Streamlit app never connects to the database; backend uses parameterized queries; credentials in environment variables or Key Vault, never in the repository; HTTPS; database firewall restricted to authorized services |
 | Privacy | No personal data collected; user text sent to the NLP provider is treated as non-sensitive and this is disclosed |
 | Legal and licensing | Source licenses and attribution kept; no data or API used against provider terms |
 | Usability | Responsive layout; clear empty and error states |
@@ -172,7 +172,7 @@ Targets are initial and will be validated by measurement.
 ## 7. Constraints and assumptions
 
 - Team of 6 students; build window about 15-31 Nov, 2026.
-- Technology baseline: Python, MySQL on Azure, Airflow, FastAPI, React, Hugging Face.
+- Technology baseline: Python, MySQL on Azure, Airflow, FastAPI, Streamlit, Hugging Face.
 - Data must come from open or permitted sources.
 - The baseline dataset has limited geographic coverage; the product must state its coverage honestly.
 - Prices in the baseline dataset use different currencies and are not directly comparable across countries.
@@ -195,7 +195,7 @@ Owner accounts and verification, B2B matching, in-app reviews, gap or saturation
 
 ## 10. Traceability
 
-Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned). The test plan will cover Python, pipeline, backend, and SQL behavior only; frontend component tests are out of scope.
+Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned). The test plan will cover Python, pipeline, backend, and SQL behavior only; Streamlit presentation component tests are out of scope.
 
 ## 11. Change log
 

@@ -14,7 +14,7 @@
 ## 2. Architecture style
 
 - **Data:** Medallion (Bronze, Silver, Gold) batch pipeline orchestrated by Apache Airflow.
-- **Application:** three tiers (React presentation, FastAPI service layer, MySQL data layer) in a modular monolith backend. Microservices are unnecessary at this scale.
+- **Application:** three tiers (Streamlit presentation, FastAPI service layer, MySQL data layer) in a modular monolith backend. Microservices are unnecessary at this scale.
 - **Principles:** idempotent tasks, provenance on every record, validate before load, quarantine instead of delete, configuration through environment variables, business logic kept out of DAG files.
 
 ## 3. System context (DFD Level 0)
@@ -59,7 +59,7 @@ flowchart TB
     end
     AF["Apache Airflow"]
     subgraph APP["Application"]
-        WEB["React and Leaflet"]
+        WEB["Streamlit presentation"]
         API["FastAPI backend"]
         NLPA["NLP adapter and rule-based fallback"]
         WEB -->|HTTPS| API
@@ -272,7 +272,7 @@ SearchParams {
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant W as React app
+    participant W as Streamlit app
     participant A as FastAPI backend
     participant N as NLP adapter
     participant H as Hugging Face
@@ -332,10 +332,10 @@ classDiagram
 
 ## 11. Security
 
-- The React app never connects to MySQL; only the backend does.
+- The Streamlit app never connects to MySQL; only the backend does.
 - Parameterized queries only; model output is never executed.
 - Secrets (database password, Hugging Face key, Blob keys) are stored in Azure Key Vault or protected app settings, loaded from environment variables, and never committed.
-- HTTPS everywhere; CORS limited to the frontend origin.
+- HTTPS everywhere; CORS limited to the Streamlit presentation origin.
 - MySQL firewall rules allow only the App Service, the Airflow host, and named developer IPs. Private networking is a Could item.
 - Airflow web interface restricted to team members.
 - Rate limiting on the NLP endpoint to control cost.
@@ -346,7 +346,7 @@ classDiagram
 flowchart LR
     U([User browser])
     subgraph AZ["Microsoft Azure"]
-        SWA["Static Web Apps: React"]
+        APPUI["App Service: Streamlit"]
         APPS["App Service: FastAPI"]
         MYSQL[("Database for MySQL Flexible Server")]
         BLOB[("Blob Storage: Bronze")]
@@ -356,8 +356,8 @@ flowchart LR
     end
     HF([Hugging Face Inference])
     GH["GitHub and Actions"]
-    U --> SWA
-    SWA -->|HTTPS| APPS
+    U --> APPUI
+    APPUI -->|HTTPS| APPS
     APPS --> MYSQL
     APPS --> HF
     APPS -.-> KV
@@ -365,7 +365,7 @@ flowchart LR
     VM --> MYSQL
     VM -.-> KV
     APPS -.-> MON
-    GH --> SWA
+    GH --> APPUI
     GH --> APPS
 ```
 
@@ -374,7 +374,7 @@ flowchart LR
 | Database for MySQL Flexible Server | Main database | Must |
 | Blob Storage | Bronze raw files | Must |
 | App Service | FastAPI backend | Must |
-| Static Web Apps | React frontend | Must |
+| App Service | Streamlit web presentation | Must |
 | Linux VM | Airflow host | Should |
 | Key Vault | Secrets | Should |
 | Monitor and Application Insights | Monitoring | Could |
@@ -392,9 +392,9 @@ If Azure access or cost blocks any Must item, the fallback is local MySQL and Do
 | Raw storage | Azure Blob Storage | Decided |
 | Orchestration | Apache Airflow | Decided (hosting TBD, S2) |
 | Backend | FastAPI | Decided |
-| Frontend | React, Leaflet (JavaScript with JSX) | Decided |
+| Web presentation | Streamlit | Decided |
 | NLP | Hugging Face Inference Providers | Decided (model TBD, S3) |
-| Hosting | Static Web Apps, App Service, Linux VM | Decided (VM Should) |
+| Hosting | App Service, Linux VM | Decided (VM Should) |
 | Version control | Git and GitHub | Decided |
 
 ## 14. UI/UX
@@ -428,4 +428,4 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | Date | Change |
 |------|--------|
 | 2026-10-30 | v0.1 created |
-| 2026-10-30 | v0.2: medallion layers, team schema, FastAPI and React, Azure deployment; added activity, state, and class diagrams |
+| 2026-11-20 | v0.3: adopted Streamlit as the primary web presentation framework and updated application and deployment views |

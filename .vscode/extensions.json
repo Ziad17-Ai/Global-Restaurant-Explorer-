@@ -5,8 +5,6 @@
         "ms-python.python",
         "ms-python.vscode-pylance",
         "ms-python.mypy-type-checker",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
         "sonarsource.sonarlint-vscode"
     ]
 }

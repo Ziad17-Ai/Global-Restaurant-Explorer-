@@ -27,7 +27,7 @@ The data pipeline is the core of the project. The web app is the layer users int
 | - DFD, sequence, activity, state, class diagrams | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), sections 3, 6-8, 10 |
 | - Deployment diagram, API outline | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), sections 12, 15 |
 | - UI/UX wireframes and guidelines | `docs/UI_UX.md` (planned) |
-| **Implementation: source code** | `pipeline/`, `web/backend/`, `web/frontend/`, `sql/` |
+| **Implementation: source code** | `pipeline/`, `web/backend/`, `web/streamlit/`, `sql/` |
 | Coding standards and naming conventions | [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) |
 | Version control, branching, collaboration | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | Testing and validation plan | `docs/TESTING.md` (planned; Python, pipeline, backend, and SQL tests only) |
@@ -59,7 +59,7 @@ Coverage note: the Zomato dataset is heavily concentrated in India and, as far a
 Sources -> Python ingestion -> Bronze (raw files in Azure Blob)
         -> Clean, standardize, validate -> Silver (MySQL tables) + quarantine table
         -> SQL transformations -> Gold (search tables, views, indexes)
-        -> FastAPI backend -> React web app (filters, map, NLP search)
+        -> FastAPI backend -> Streamlit web app (filters, map, NLP search)
 
 Apache Airflow orchestrates the pipeline. Hugging Face provides the NLP model/API.
 ```
@@ -75,9 +75,9 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | Raw storage | Azure Blob Storage | Must |
 | Orchestration | Apache Airflow (local first; Azure Linux VM if time allows) | Must (DAG), Should (VM) |
 | Backend | FastAPI | Must |
-| Frontend | React, Leaflet | Must |
+| Web presentation | Streamlit | Must |
 | NLP | Hugging Face Inference Providers, with rule-based fallback | Must |
-| Hosting | Azure Static Web Apps (frontend), Azure App Service (backend) | Must |
+| Hosting | Azure App Service (Streamlit and backend) | Must |
 | Secrets | Azure Key Vault (or protected app settings) | Should |
 | Monitoring and networking | Azure Monitor, Application Insights, Virtual Network | Could |
 
@@ -85,7 +85,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 > **TBD.** Completed as implementation lands. The final version must let a new person run the project from this section alone.
 
-- **Prerequisites:** Python version, Node version, MySQL version, Docker (for local Airflow)
+- **Prerequisites:** Python version, MySQL version, Docker (for local Airflow)
 - **Clone:**
 
   ```bash
@@ -97,7 +97,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - **Database setup:** run the scripts in `sql/` in order (TBD)
 - **Run the pipeline:** TBD
 - **Run the backend:** TBD
-- **Run the frontend:** TBD
+- **Run the Streamlit app:** TBD
 - **Deployed application URL:** TBD
 
 ## 8. Repository structure (proposed)
@@ -121,7 +121,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ├── sql/               (numbered schema and transformation scripts)
 ├── web/
 │   ├── backend/       (FastAPI backend)
-│   └── frontend/      (React frontend)
+│   └── streamlit/     (Streamlit web presentation)
 └── tests/
 ```
 

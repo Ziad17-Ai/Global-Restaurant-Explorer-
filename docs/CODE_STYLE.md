@@ -1,6 +1,6 @@
 # Code Style Guide
 
-> **Status:** Draft v0.6, a living document.
+> **Status:** Draft v0.9, a living document.
 > **Last updated:** 2026-11-20
 
 Keywords **MUST** and **SHOULD** follow their usual meaning. Every rule names how it is enforced: a tool (blocks the merge), or review (a human checks it).
@@ -28,7 +28,7 @@ The folders that the rules and CI refer to. If the repository skeleton differs, 
 
 ```text
 web/backend/     FastAPI app: routers/, services/, repositories/, schemas/, settings.py
-web/frontend/    React app: src/theme, src/api, src/components, src/hooks, src/map
+web/streamlit/   Streamlit app: app.py, pages/, components/, services/
 pipeline/        ETL modules (never import FastAPI)
 pipeline/dags/    Airflow DAG files (wiring only)
 sql/             Numbered SQL scripts
@@ -38,7 +38,7 @@ docs/            Project documents (this guide, requirements, architecture)
 
 ### Data conventions
 
-These apply to Python, SQL, the API, and the frontend alike.
+These apply to Python, SQL, the API, and the Streamlit application alike.
 
 - **Time:** all timestamps are UTC. In Python, use timezone-aware values (`datetime.now(UTC)`). Columns are named `<event>_at` (`ingested_at`).
 - **Coordinates:** latitude comes before longitude in variables, columns (`latitude`, `longitude`), and JSON. Silver stores them as `DECIMAL(9, 6)`; Gold map tables store one `POINT SRID 4326` column (section 4). GeoJSON uses `[lng, lat]` and Leaflet uses `[lat, lng]`; convert only at those boundaries, in one helper per language.
@@ -261,65 +261,26 @@ def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
 | Status codes | 201 on create, 404 when missing, 422 on validation errors, 429 when rate limited |
 | OpenAPI | Every route sets `response_model`, `summary`, and `tags`; the generated schema is the API documentation |
 
-## 6. JavaScript (React)
+## 6. Web presentation (Streamlit)
 
-**Tools:** ESLint, Prettier. The project uses JavaScript with JSX; TypeScript is not used.
-
-| Topic | Rule | Enforced by |
-| ------- | ------ | ------------- |
-| Formatting | Prettier: 2 spaces, single quotes, semicolons, trailing commas | `prettier --check` |
-| Language | ES modules; components in `.jsx` files; `const` by default, never `var`; strict equality | ESLint `no-var`, `prefer-const`, `eqeqeq` |
-| Components | Function components with hooks; one component per file; `PascalCase` file and component names (`RestaurantCard.jsx`) | ESLint `react`, review |
-| Hooks | Custom hooks start with `use` (`useRestaurantSearch`) | ESLint `react-hooks` |
-| Variables and functions | `camelCase`; constants `UPPER_SNAKE_CASE`; booleans start with `is`, `has`, or `should` | ESLint `camelcase`, review |
-| Complexity | Cyclomatic complexity of 18 or less | ESLint `complexity` |
-| JSDoc | Required for complex code: exported functions in the `src/api/` module, custom hooks, components whose props are objects or callbacks, and any function with more than three parameters or a non-obvious return value. Use `@param`, `@returns`, `@throws`, and explain *why*, not *what*. Trivial components and one-line helpers need none. A JSDoc block that exists must be valid | ESLint `jsdoc/*` (required in `src/api/`, valid everywhere), review |
-| Data shapes | API request and response shapes are documented once as JSDoc `@typedef` in `src/api/types.js` and referenced from `@param` and `@returns`. No PropTypes (React 19 no longer checks them). Editor checking through `jsconfig.json` with `checkJs` is SHOULD | review |
-| API data | Fields from the API stay `snake_case` (`min_rating`) and are never converted in the client. When destructuring, rename to camelCase (`const { min_rating: minRating } = filters`). The OpenAPI schema is the source of truth; update the typedefs in the same pull request as any API change | ESLint `camelcase` (properties ignored), review |
-| State | Keep it local when possible; lift state only when shared | review |
-| API calls | Centralized in the frontend `src/api/` module; base URL from environment variable; handle loading and error states | review |
-| Security | Never call the database from the browser; never place secrets in frontend code | review, secret scan |
-| Accessibility | Labels on inputs, alt text on images, keyboard-reachable controls (including map markers); WCAG AA contrast | ESLint `jsx-a11y`, review |
-| Logging | No `console.*` in committed code | ESLint `no-console` |
-| Strings | User-facing text lives in one strings module, not inline, so Arabic and RTL can be added later | review |
-| Styling | Material UI with one theme; see section 6.1. No inline `style` except for dynamic values | ESLint, review |
-
-### 6.1 Styling and UI library
-
-**Decision (2026-11-18):** a component library with one theme is the only styling system. Material UI (MUI) v9 is the library. The aim is one obvious way to do each thing, so code written by any teammate or assisted tooling looks the same.
-
-**Pinned stack**:
-
-| Package | Version | Why |
-| --------- | --------- | ----- |
-| `react`, `react-dom` | 19.x | `react-leaflet` 5 requires React 19 |
-| `@mui/material`, `@mui/icons-material` | 9.x | Latest major at the time of writing; see warning below |
-| `@emotion/react`, `@emotion/styled` | as required by MUI | MUI's default styling engine; imported only by MUI, never directly |
-| `leaflet`, `react-leaflet` | 1.9.x, 5.x | Map |
+**Primary framework:** Streamlit is the project's required web presentation framework. All user-facing web pages, controls, visualizations, navigation, and presentation-layer customization MUST be implemented through Streamlit. Do not introduce React, MUI, another frontend framework, or a parallel web UI.
 
 | Topic | Rule | Enforced by |
 | ------- | ------ | ------------- |
-| One library | Material UI only. No second UI or CSS framework (Mantine, Chakra, Ant, Bootstrap, Tailwind, styled-components). No `@mui/x-*` packages: MUI X Pro and Premium are commercial, so adding one needs a team decision and a license check (R7) | ESLint `no-restricted-imports` |
-| One theme | All colors, spacing, typography, breakpoints, and default component props live in `src/theme/theme.js` (`createTheme`). Components never hardcode hex colors, font sizes, or breakpoints | ESLint `no-restricted-syntax` (hex literals) |
-| Order of preference | 1) component props and variants; 2) `components` overrides in the theme for anything customized more than once; 3) the `sx` prop for one-off spacing and layout, using theme keys (`sx={{ p: 2, color: 'text.secondary' }}`); 4) `styled()` from `@mui/material/styles` for a reusable local component | review |
-| No raw CSS | No `.css` or `.scss` imports, except under `src/map/` for Leaflet. No `className` styling of our own components | ESLint `no-restricted-imports` |
-| Custom CSS naming | Any custom or literal CSS class selector must use BEM naming: `.block`, `.block__element`, or `.block--modifier` (for example, `.map__control--active`). Do not rename or wrap third-party Leaflet selectors solely to apply this rule | review |
-| No inline style | No `style` prop. Dynamic values go through `sx` | ESLint `react/forbid-dom-props` |
-| Imports | Import each component from its own path (`@mui/material/Button`, `@mui/icons-material/Search`), never the package barrel. Import `styled` from `@mui/material/styles`, never from Emotion | ESLint `no-restricted-imports` |
-| Layout | Use MUI layout components (`Stack`, `Box`, `Container`, `Grid`) rather than hand-written flex or grid CSS. Responsive values use the theme breakpoints | review |
-| Accessibility | Icon-only buttons need an `aria-label`; every input has a visible label or `aria-label`; do not remove focus outlines | ESLint `jsx-a11y` (DOM elements only), review |
-| RTL readiness | Prefer logical properties (`marginInlineStart`) over left and right, and keep text direction in the theme | review |
-| Reference component | `src/components/RestaurantCard.jsx` is the pattern to copy: theme tokens, `sx`, JSDoc, and renaming of API fields. Written in Sprint 1 | review |
-| Docs | Wireframes, token values, and screen inventory live in `docs/UI_UX.md`, not in this guide | review |
+| Entry point | Keep the main Streamlit entry point at `web/streamlit/app.py`; multi-page views belong in `web/streamlit/pages/` | review |
+| Components | Reusable presentation code belongs in `web/streamlit/components/`; names use `snake_case` and functions use `snake_case` | Ruff, review |
+| Data access | Presentation code calls backend services or approved read-only repositories; it never embeds SQL, writes to the database, or accesses pipeline internals | review |
+| State | Use `st.session_state` for user/session state; initialize keys explicitly and keep state changes close to the control that owns them | review |
+| Caching | Use `st.cache_data` for repeatable data reads and `st.cache_resource` only for shared resources such as clients or connections. Set explicit TTLs where source data can change | review |
+| Layout | Use Streamlit layout primitives (`st.columns`, `st.container`, `st.tabs`, `st.sidebar`, and `st.expander`) rather than custom HTML layout | review |
+| Customization | Any theme, CSS, JavaScript, HTML, component, or third-party visualization customization MUST be introduced through Streamlit's supported configuration or component APIs. Raw HTML/CSS/JavaScript is not a second presentation layer and requires an explicit review justification | review |
+| Configuration | Theme, page configuration, and server settings belong in Streamlit configuration (`.streamlit/config.toml` or `st.set_page_config`), not scattered through page code | review |
+| Accessibility | Every input has a label; interactive controls have descriptive text; color is not the only signal; charts and maps include a textual fallback | review |
+| Security | Never expose secrets in Streamlit code or client-side content. Never call the database directly from browser-executed code | secret scan, review |
+| User text | User-facing strings are centralized where shared and remain English by default; preserve RTL readiness and avoid concatenating untrusted input into HTML | review |
+| Forms and navigation | Use Streamlit forms and page navigation for interaction flows; do not recreate routing or client-side state management with custom JavaScript | review |
 
-**Warning for AI-assisted coding.** MUI has changed its APIs in most major versions, and v9 is recent, so generated code often uses older props and layout syntax. Deprecated props are removed in major releases; for example, `TransitionComponent` was dropped from `Accordion` in the v9 pre-releases. Check any generated MUI code against the documentation for the pinned major version, and prefer copying from the reference component.
-
-**Frontend folders** (inside `web/frontend/`; enforced by the lint overrides in section 12):
-
-- `src/theme/`: the theme, the only place that defines colors.
-- `src/api/`: API calls and `types.js`, with JSDoc required.
-- `src/components/`, `src/hooks/`: UI and custom hooks.
-- `src/map/`: Leaflet code and its CSS, the only place that may import CSS.
+Streamlit is the single presentation boundary. FastAPI may remain as a backend/API layer, but a new or changed user-facing feature must be wired through Streamlit and must not add a competing frontend surface.
 
 ## 7. Airflow DAGs
 
@@ -350,8 +311,8 @@ def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
 | Quality rule names | `snake_case` constants | `rating_out_of_range` |
 | Blob containers | lowercase letters, digits, hyphens (Azure rule) | `bronze` |
 | Blob paths | `<source>/<yyyy-mm-dd>/<batch_id>/<original_file>` | `zomato/2026-11-18/b0042/zomato.csv` |
-| React components | `PascalCase`, `.jsx` extension | `RestaurantCard.jsx` |
-| JS variables | `camelCase` | `selectedCity` |
+| Streamlit pages and modules | `snake_case`, `.py` extension | `restaurant_search.py` |
+| Streamlit functions | `snake_case` | `render_restaurant_card()` |
 | Branches | `type/area-description`; types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test` | `feat/backend-nl-search` |
 | Commits | Conventional Commits | `feat(backend): add nl search endpoint` |
 | Env variables | `UPPER_SNAKE_CASE` | `MYSQL_HOST` |
@@ -377,8 +338,8 @@ def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
 - [ ] The application connects with a least-privilege, read-only database user; pipeline and application use separate accounts
 - [ ] TLS required for MySQL connections
 - [ ] CORS limited to an explicit origin allowlist; HTTPS everywhere
-- [ ] Dependencies pinned (`requirements.txt` or lock file, `package-lock.json`)
-- [ ] Dependency audits run in CI (`pip-audit`, `npm audit`) or through Dependabot
+- [ ] Dependencies pinned in `requirements.txt` or a Python lock file
+- [ ] Python dependency audits run in CI (`pip-audit`) or through Dependabot
 
 ## 11. Git and CI
 
@@ -392,7 +353,7 @@ def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
 | Python types | `mypy` |
 | Python tests | `pytest` |
 | DAG import test | `pytest` (DAG import test) |
-| Frontend lint and format | ESLint, `prettier --check` |
+| Streamlit lint and format | Ruff check and format for `web/streamlit/` |
 | Secret scan | secret-scanning tool (for example `gitleaks`) |
 
 Dependency audits run on the same pipeline but do not block a merge until the team agrees on a severity threshold.
@@ -404,6 +365,7 @@ Dependency audits run on the same pipeline but do not block a merge until the te
 | 2026-10-30 | v0.2 created as an adoptable template |
 | 2026-11-18 | v0.3: added status header, enforcement columns, data conventions, API conventions, NLP adapter rules, Git and CI, reference configuration, and open items; fixed MySQL script rules (`IF NOT EXISTS` is not valid for views and indexes); corrected the Python example (unused import, bare `df`, unrated ratings, rejection reason); fixed typo and naming gaps |
 | 2026-11-18 | v0.4: JavaScript (D-7 closed) with JSDoc for complex code and a reference ESLint config; third-party open model for NLP (S3 chooses the model) |
-| 2026-11-18 | v0.5: styling decision (component library with one theme, Material UI v9 proposed), pinned frontend stack, section 6.1 with lint enforcement |
 | 2026-11-18 | v0.6: PyMySQL as the driver; no migrations (schema rebuilt from Bronze); spatial storage and radius search with tested examples; USD price normalization with original amounts kept; relaxed primary-key naming; repository layout; complexity aligned to 18; model choice moved to the decision log; CODEOWNERS dropped |
 | 2026-11-19 | v0.7: consolidated source layout under `web/backend/` and `web/frontend/`; moved frontend package and ESLint configuration into `web/frontend/`; removed frontend tests; added owned TBD-marker rules |
+| 2026-11-20 | v0.8: Streamlit adopted as the primary and only approved web presentation framework; replaced React/MUI frontend rules with Streamlit conventions |
+| 2026-11-20 | v0.9: removed obsolete Node, React, ESLint, and Prettier tooling and updated repository settings for Streamlit |

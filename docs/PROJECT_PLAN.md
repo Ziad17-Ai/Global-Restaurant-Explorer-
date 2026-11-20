@@ -29,11 +29,11 @@
 - M2: At least one additional source integrated (decided in S1)
 - M3: Data-quality rules with a quarantine table
 - M4: FastAPI endpoints with parameterized queries
-- M5: React filters and results list
-- M6: Leaflet map with markers and details
+- M5: Streamlit filters and results list
+- M6: Streamlit-compatible map with markers and details
 - M7: NLP search through Hugging Face with validation and a rule-based fallback
 - M8: One Airflow DAG that runs the pipeline (locally in Docker is acceptable)
-- M9: MySQL on Azure, backend on App Service, frontend on Static Web Apps
+- M9: MySQL on Azure, backend and Streamlit app on App Service
 - M10: Documentation, README, demo
 
 **Should**
@@ -82,7 +82,7 @@
 2. Cleaning, Silver layer, quality rules
 3. Database schema, Gold layer, indexes (MySQL)
 4. FastAPI backend and NLP adapter
-5. React frontend and Leaflet map
+5. Streamlit web presentation and map
 6. Airflow, Azure deployment, CI
 
 Everyone contributes to documentation and testing.
@@ -111,12 +111,12 @@ Everyone contributes to documentation and testing.
 
 **Sprint 1: 15-21 Nov (data foundation and search backbone)**
 
-- Tasks: Zomato to Bronze, Silver, and MySQL (local first, then Azure); schema v1 scripts; quality rules and quarantine table; close S1 and start ingesting source 2; run S2 and S3; FastAPI filter endpoints; React skeleton with filters and list.
+- Tasks: Zomato to Bronze, Silver, and MySQL (local first, then Azure); schema v1 scripts; quality rules and quarantine table; close S1 and start ingesting source 2; run S2 and S3; FastAPI filter endpoints; Streamlit skeleton with filters and list.
 - Deliverables: pipeline works end-to-end for Zomato; Azure database reachable; filter search works on real data.
 
 **Sprint 2: 22-28 Nov (product and deployment)**
 
-- Tasks: second source integrated; Gold views and indexes; map; NLP endpoint with fallback; Airflow DAG scheduled; deploy frontend and backend to Azure; tests; Should items as capacity allows. **Feature freeze 28 Nov.**
+- Tasks: second source integrated; Gold views and indexes; map; NLP endpoint with fallback; Airflow DAG scheduled; deploy Streamlit and backend to Azure; tests; Should items as capacity allows. **Feature freeze 28 Nov.**
 - Deliverables: three features working on the deployed app.
 
 **Final: 29-30 Nov (hardening and delivery)**
@@ -135,7 +135,7 @@ Everyone contributes to documentation and testing.
 | R5 | Hugging Face limits, latency, or model quality | Medium | Medium | Adapter pattern, caching, rule-based fallback |
 | R6 | Airflow setup consumes disproportionate time | Medium | Medium | Local Docker first; VM only if time allows |
 | R7 | License or terms violation | Low | High | Verify licenses (S1); keep attribution; no scraping against terms |
-| R8 | Skill gaps (SQL, React, FastAPI, Azure) | High | Medium | Pairing, small first steps, shared notes |
+| R8 | Skill gaps (SQL, Streamlit, FastAPI, Azure) | High | Medium | Pairing, small first steps, shared notes |
 | R9 | Scope creep | High | Medium | Scope baseline, MoSCoW, change log |
 | R10 | Overlap with existing public projects | Medium | Medium | Cite and differentiate (see literature review); original code |
 
