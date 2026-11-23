@@ -1,3 +1,8 @@
+[project]
+name = "global-restaurant-explorer"
+version = "0.1.0"
+requires-python = ">=3.12"
+
 [tool.ruff]
 line-length = 88
 target-version = "py312"
@@ -23,3 +28,6 @@ disallow_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
+
+[tool.setuptools]
+py-modules = []
