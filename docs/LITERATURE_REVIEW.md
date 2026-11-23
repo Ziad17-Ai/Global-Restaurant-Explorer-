@@ -1,7 +1,7 @@
 # Literature Review
 
-> **Status:** Draft v0.3, a living document.  
-> **Last updated:** 2026-10-30
+> **Status:** Draft v0.4, a living document.
+> **Last updated:** 2026-11-24
 
 ## 1. Purpose and scope
 
@@ -119,7 +119,7 @@ Map display and area-based search require valid coordinates, consistent locality
 - Indexing for bounding-box and radius queries.
 - Clear handling of places with missing or ambiguous locations.
 
-**Decision for this project:** TBD; see `docs/ARCHITECTURE.md`, decision D-5.
+**Decision for this project:** Closed (D-5 in `docs/ARCHITECTURE.md`): Silver stores validated decimal `latitude` and `longitude` (`NULL` when missing or zero), and Gold map tables store `POINT SRID 4326 NOT NULL` with a `SPATIAL INDEX`, queried via bounding-box `MBRContains` followed by exact `ST_Distance_Sphere` (`docs/CODE_STYLE.md`, section 4).
 
 ### 4.5 Safe natural-language search
 
@@ -174,3 +174,4 @@ We do not claim to outperform commercial location-intelligence products. We clai
 | 2026-10-30 | v0.1 created |
 | 2026-10-30 | v0.2: aligned to team proposal: Zomato baseline, Airflow, Hugging Face, Azure |
 | 2026-10-30 | v0.3: verified source licenses and access models; corrected Foursquare access description; qualified Yelp coverage claim; clarified Zomato dataset citation requirements; strengthened related-work and positioning sections |
+| 2026-11-24 | v0.4: synced geospatial serving decision D-5 with `ARCHITECTURE.md` and `CODE_STYLE.md` (`POINT SRID 4326` in Gold) |
