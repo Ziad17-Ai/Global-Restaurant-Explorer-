@@ -1,7 +1,7 @@
 # Global Restaurant Explorer Platform
 
-> **Status:** Draft v0.2, a living document. We work iteratively (Agile), so items marked **TBD** are pending timeboxed spikes and may change during implementation. See `docs/PROJECT_PLAN.md` for how decisions are made.
-> **Last updated:** 2026-10-30
+> **Status:** Draft v0.3, a living document. We work iteratively (Agile), so items marked **TBD** are pending timeboxed spikes and may change during implementation. See `docs/PROJECT_PLAN.md` for how decisions are made.
+> **Last updated:** 2026-11-23
 > **Repository:** <https://github.com/nhahub/NHA-5-083>
 
 > **Naming note:** the final name is TBD. "Global" overstates our data coverage (see section 4), and the name should not duplicate existing public projects (see `docs/LITERATURE_REVIEW.md`).
@@ -30,7 +30,7 @@ The data pipeline is the core of the project. The web app is the layer users int
 | **Implementation: source code** | `pipeline/`, `web/backend/`, `web/streamlit/`, `sql/` |
 | Coding standards and naming conventions | [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) |
 | Version control, branching, collaboration | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
-| Testing and validation plan | `docs/TESTING.md` (planned; Python, pipeline, backend, and SQL tests only) |
+| Testing and validation plan | `docs/TESTING.md` (planned; Python, pipeline, backend, SQL, and Streamlit smoke tests) |
 | Deployment and execution instructions | This file, section 7 |
 
 ## 3. Features
@@ -61,7 +61,7 @@ Sources -> Python ingestion -> Bronze (raw files in Azure Blob)
         -> SQL transformations -> Gold (search tables, views, indexes)
         -> FastAPI backend -> Streamlit web app (filters, map, NLP search)
 
-Apache Airflow orchestrates the pipeline. Hugging Face provides the NLP model/API.
+Apache Airflow orchestrates the pipeline. Hugging Face provides the NLP model/API. The Streamlit presentation layer consumes data exclusively through the FastAPI backend over HTTP (`web/streamlit/api_client.py`) and holds no database credentials.
 ```
 
 Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
@@ -93,7 +93,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   cd NHA-5-083
   ```
 
-- **Configuration:** copy `.env.example` to `.env` and fill in database, Blob Storage, and Hugging Face values. Never commit `.env`.
+- **Configuration:** copy `.env.example` to `.env` and fill in database, Blob Storage, and Hugging Face values. Streamlit holds no database credentials and requires only the backend API URL. Never commit `.env`.
 - **Database setup:** run the scripts in `sql/` in order (TBD)
 - **Run the pipeline:** TBD
 - **Run the backend:** TBD
@@ -121,7 +121,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 ├── sql/               (numbered schema and transformation scripts)
 ├── web/
 │   ├── backend/       (FastAPI backend)
-│   └── streamlit/     (Streamlit web presentation)
+│   └── streamlit/     (Streamlit web presentation: app.py, api_client.py, pages/)
 └── tests/
 ```
 

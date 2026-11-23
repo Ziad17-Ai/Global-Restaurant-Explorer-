@@ -65,6 +65,7 @@ Every PR description should include:
 
 - Does it do what the issue asks, and nothing hidden?
 - Are SQL queries parameterized?
+- Does Streamlit access data strictly via `api_client.py` without embedding SQL, importing database packages, or storing database credentials?
 - Are errors handled, and are failures logged rather than swallowed?
 - Are names clear and consistent?
 - Is the pipeline step idempotent (safe to re-run)?

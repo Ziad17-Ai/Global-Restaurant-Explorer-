@@ -1,7 +1,7 @@
 # Software Requirements Specification (SRS)
 
-> **Status:** Draft v0.2, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could). <br>
-> **Last updated:** 2026-10-30
+> **Status:** Draft v0.3, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could). <br>
+> **Last updated:** 2026-11-23
 
 ## 1. Introduction
 
@@ -159,7 +159,7 @@ Targets are initial and will be validated by measurement.
 | Performance | Typical filtered search returns in under 2 seconds (target); indexes on common filter columns |
 | Reliability | Failed pipeline tasks retry and fail loudly; re-runs are safe |
 | Data quality | Coordinates validated; invalid records quarantined; quality counts reported per run |
-| Security | The Streamlit app never connects to the database; backend uses parameterized queries; credentials in environment variables or Key Vault, never in the repository; HTTPS; database firewall restricted to authorized services |
+| Security | The Streamlit app never connects to the database and holds no database credentials, accessing data exclusively via FastAPI over HTTP/HTTPS through an API client (`api_client.py`); backend uses parameterized queries; credentials in environment variables or Key Vault, never in the repository; HTTPS; database firewall restricted to authorized services |
 | Privacy | No personal data collected; user text sent to the NLP provider is treated as non-sensitive and this is disclosed |
 | Legal and licensing | Source licenses and attribution kept; no data or API used against provider terms |
 | Usability | Responsive layout; clear empty and error states |
@@ -195,7 +195,7 @@ Owner accounts and verification, B2B matching, in-app reviews, gap or saturation
 
 ## 10. Traceability
 
-Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned). The test plan will cover Python, pipeline, backend, and SQL behavior only; Streamlit presentation component tests are out of scope.
+Each requirement links to a user story. Each story will link to a test case in `docs/TESTING.md` (could, planned). The test plan covers Python, pipeline, backend, and SQL behavior, plus Streamlit page smoke tests using `AppTest` (stubbing `web/streamlit/api_client.py`); visual/layout component tests remain manual.
 
 ## 11. Change log
 
@@ -203,3 +203,4 @@ Each requirement links to a user story. Each story will link to a test case in `
 |------      | --------     |
 | 2026-10-30 | v0.1 created |
 | 2026-10-30 | v0.2: aligned to team proposal; added admin stories, currency and Egypt coverage notes        |
+| 2026-11-23 | v0.3: codified Option A data access (Streamlit calls FastAPI over HTTP via api_client.py, holding no database credentials); updated testing scope to include Streamlit AppTest smoke tests |

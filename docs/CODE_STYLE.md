@@ -1,7 +1,7 @@
 # Code Style Guide
 
-> **Status:** Draft v0.9, a living document.
-> **Last updated:** 2026-11-20
+> **Status:** Draft v0.12, a living document. No open items remain in section 12.
+> **Last updated:** 2026-11-23
 
 Keywords **MUST** and **SHOULD** follow their usual meaning. Every rule names how it is enforced: a tool (blocks the merge), or review (a human checks it).
 
@@ -20,6 +20,7 @@ Keywords **MUST** and **SHOULD** follow their usual meaning. Every rule names ho
 - Comments explain *why*, not *what*. Delete commented-out code.
 - No magic numbers or strings: use named constants or config.
 - TODO comments include an owner or issue: `# TODO(#42): handle currency conversion`.
+- A `TBD` in code or docs has an entry in section 12 with an owner and a due date; a `TBD` without an entry is a defect.
 - Keep functions short and single-purpose. If a function needs a long comment to explain it, split it.
 
 ### Repository layout
@@ -27,29 +28,28 @@ Keywords **MUST** and **SHOULD** follow their usual meaning. Every rule names ho
 The folders that the rules and CI refer to. If the repository skeleton differs, update this list rather than the rules.
 
 ```text
-web/backend/     FastAPI app: routers/, services/, repositories/, schemas/, settings.py
-web/streamlit/   Streamlit app: app.py, pages/, components/, services/
-pipeline/        ETL modules (never import FastAPI)
+web/backend/      FastAPI app: routers/, services/, repositories/, schemas/, settings.py
+web/streamlit/    Streamlit app: app.py, api_client.py, pages/, components/, .streamlit/
+pipeline/         ETL modules (no FastAPI, Streamlit, or Airflow imports)
 pipeline/dags/    Airflow DAG files (wiring only)
-sql/             Numbered SQL scripts
-tests/           pytest tests, mirroring web/backend/ and pipeline/
-docs/            Project documents (this guide, requirements, architecture)
+sql/              Numbered SQL scripts
+tests/            pytest tests, mirroring web/backend/, web/streamlit/, and pipeline/
+docs/             Project documents (this guide, requirements, architecture)
 ```
 
 ### Data conventions
 
-These apply to Python, SQL, the API, and the Streamlit application alike.
+These apply to Python, SQL, the API, and the Streamlit app alike.
 
 - **Time:** all timestamps are UTC. In Python, use timezone-aware values (`datetime.now(UTC)`). Columns are named `<event>_at` (`ingested_at`).
 - **Coordinates:** latitude comes before longitude in variables, columns (`latitude`, `longitude`), and JSON. Silver stores them as `DECIMAL(9, 6)`; Gold map tables store one `POINT SRID 4326` column (section 4). GeoJSON uses `[lng, lat]` and Leaflet uses `[lat, lng]`; convert only at those boundaries, in one helper per language.
 - **Money:** `Decimal` in Python and `DECIMAL(p, s)` in SQL, never floats. Silver keeps the original amount and its ISO 4217 code (`avg_cost_for_two`, `currency_code`) and never overwrites them. At fetch time, standardization also computes a US dollar amount (`avg_cost_for_two_usd`) and stores the rate and its date (`fx_rate`, `fx_rate_date`). The rate comes from one source and is pinned per batch, so a re-run reproduces the same values. Filtering and sorting across countries use the USD column.
-- **Displaying prices (proposed, CS-11):** the API returns the original amount, its currency, and the USD amount. Conversion from USD to the local currency happens at request time using a daily-cached rate, never one external call per request, and the UI labels converted prices as approximate.
 - **Unrated places:** stored with a `NULL` rating, never `0`. Sources that encode "unrated" as `0` are converted during standardization.
 - **Provenance:** every Silver row keeps its source and batch keys (`source_id`, `batch_id`) and the source's own record key (`source_restaurant_id`).
 
-## 3. Python (pipeline and FastAPI)
+## 3. Python (pipeline, FastAPI, and Streamlit)
 
-**Tools:** Ruff (lint and format), mypy (types), pytest (tests). Configuration is in section 12.
+**Tools:** Ruff (lint and format), mypy (types), pytest (tests). Configuration lives in `pyproject.toml` at the repository root.
 
 | Topic | Rule | Enforced by |
 | ------- | ------ | ------------- |
@@ -60,14 +60,15 @@ These apply to Python, SQL, the API, and the Streamlit application alike.
 | Imports | Standard library, third party, local; no wildcard imports | Ruff `I`, `F` |
 | Logging | `logging` with module-level loggers; no `print`; include `run_id` and `batch_id` in pipeline logs; never log secrets; log user query text only truncated | Ruff `T20`, review |
 | Errors | Raise specific exceptions; never a bare `except:`; log with context, then re-raise or handle | Ruff `E722`, `B`, review |
-| Config | Environment variables read through one settings module; never hardcode credentials | Ruff `S105`, `S106`, review |
+| Config | Environment variables read through one settings module per app; never hardcode credentials | Ruff `S105`, `S106`, review |
 | Paths | `pathlib.Path`, not string concatenation | Ruff `PTH` |
 | Time | Timezone-aware datetimes only | Ruff `DTZ` |
 | Complexity | Cyclomatic complexity of 18 or less; no magic numbers | Ruff `C90`, `PLR2004` |
 | Pandas | Vectorized operations; no chained assignment; name DataFrames by content or layer (`raw_df`, `restaurants_df`, `silver_df`), never a bare `df`; pass `encoding` and `dtype` explicitly when reading files; never `to_sql(if_exists="replace")`, because it drops indexes and constraints | Ruff `PD`, review |
-| Layering | Routers call services, services call repositories. SQL appears only in repositories, in `pipeline/` load modules, and in `sql/` scripts. `pipeline/` never imports FastAPI; DAG files only import `pipeline/` | review |
+| Layering | Routers call services, services call repositories. SQL appears only in repositories, in `pipeline/` load modules, and in `sql/` scripts | review |
+| Import boundaries | `pipeline/` (outside `pipeline/dags/`) never imports FastAPI, Streamlit, or Airflow. `web/backend/` never imports Streamlit or Airflow, and its routers and services never import `pymysql`. `web/streamlit/` never imports `pymysql`, `web/backend/`, or `pipeline/` | `tests/test_architecture.py` |
 | FastAPI | Pydantic models for request and response schemas; routers per resource; one dependency that opens and closes the DB connection per request; routes that use PyMySQL are plain `def`, not `async def`, because PyMySQL blocks; proper status codes; see section 5 | review |
-| Dependencies | Pinned; API and Airflow use separate requirements files, because Airflow constraint files commonly conflict with an application stack | review, CI |
+| Dependencies | Pinned. The API, the Streamlit app, and Airflow each have their own requirements file: Airflow constraint files commonly conflict with an application stack, and the apps deploy separately | review, CI |
 
 **Example**
 
@@ -146,7 +147,7 @@ def split_valid_ratings(
 | Selecting | List columns explicitly; avoid `SELECT *` in application and Gold code | review |
 | Layout | One clause per line, indented joins and conditions | review |
 | Ordering | Every `ORDER BY` that feeds pagination ends with a unique tie-breaker | review |
-| Driver | PyMySQL, with `charset='utf8mb4'` and TLS enabled. Values are always passed separately (`cursor.execute(sql, params)`) with named `%(name)s` placeholders. For DataFrames, build them from `cursor.fetchall()`; `to_sql` and `read_sql` expect SQLAlchemy, which we do not use. PyMySQL has no pool; one connection per request is acceptable at this scale | review |
+| Driver | PyMySQL, with `charset='utf8mb4'` and TLS enabled. Values are always passed separately (`cursor.execute(sql, params)`) with named `%(name)s` placeholders. For DataFrames, build them from `cursor.fetchall()`; `to_sql` and `read_sql` expect SQLAlchemy, which we do not use. PyMySQL has no pool; one connection per request is acceptable at this scale. Never share one connection across requests or sessions (for example through `st.cache_resource`): PyMySQL connections are not thread-safe and go stale | review |
 | Safety | Application code uses parameterized queries only; never build SQL by string formatting | review, Ruff `S608` |
 | Scripts | Numbered files in `sql/` (`001_create_tables.sql`, `002_create_gold_views.sql`). There are no migrations: the schema is rebuilt, not altered. To change it, edit the numbered script, recreate the database, and reload from Bronze (Silver and Gold are derived data). Table scripts use `CREATE TABLE IF NOT EXISTS`; Gold view scripts use `CREATE OR REPLACE VIEW`. `sql/000_reset.sql` drops everything and is for development and demo databases only. Revisit this rule if data that Bronze cannot rebuild, such as `pipeline_runs` history, must survive a schema change. MySQL has no `IF NOT EXISTS` for indexes, columns, or views. Keep `;` out of comments and strings so simple script runners can split statements | review |
 | Spatial | Gold map tables hold `location POINT SRID 4326 NOT NULL` with a `SPATIAL INDEX`; rows without valid coordinates are not in them. Build every point the same way: `ST_SRID(POINT(longitude, latitude), 4326)`. `POINT(x, y)` takes longitude first, but WKT text with SRID 4326 is latitude first, and swapped coordinates raise no error. Radius search uses a bounding box on the index (`MBRContains`), then the exact `ST_Distance_Sphere` check (meters); the distance function alone does not use the index. Validate coordinate ranges before building a point | review, tests |
@@ -261,26 +262,31 @@ def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
 | Status codes | 201 on create, 404 when missing, 422 on validation errors, 429 when rate limited |
 | OpenAPI | Every route sets `response_model`, `summary`, and `tags`; the generated schema is the API documentation |
 
-## 6. Web presentation (Streamlit)
+## 6. Streamlit
 
-**Primary framework:** Streamlit is the project's required web presentation framework. All user-facing web pages, controls, visualizations, navigation, and presentation-layer customization MUST be implemented through Streamlit. Do not introduce React, MUI, another frontend framework, or a parallel web UI.
+**Requirement:** Streamlit MUST be used. It provides the user-facing screens, and every screen must work on both PC and phone screens with a flexible layout. Streamlit does not have to handle every feature: FastAPI remains the API and `pipeline/` remains the ETL. Any other UI technology, such as a separate frontend app, needs a team decision and its own section in this guide before anyone uses it.
+
+**Pinned stack:** Streamlit 1.67.x (the current release at the time of writing) on Python 3.12 or newer. The exact version is recorded in `web/streamlit/requirements.txt`.
 
 | Topic | Rule | Enforced by |
 | ------- | ------ | ------------- |
-| Entry point | Keep the main Streamlit entry point at `web/streamlit/app.py`; multi-page views belong in `web/streamlit/pages/` | review |
-| Components | Reusable presentation code belongs in `web/streamlit/components/`; names use `snake_case` and functions use `snake_case` | Ruff, review |
-| Data access | Presentation code calls backend services or approved read-only repositories; it never embeds SQL, writes to the database, or accesses pipeline internals | review |
-| State | Use `st.session_state` for user/session state; initialize keys explicitly and keep state changes close to the control that owns them | review |
-| Caching | Use `st.cache_data` for repeatable data reads and `st.cache_resource` only for shared resources such as clients or connections. Set explicit TTLs where source data can change | review |
-| Layout | Use Streamlit layout primitives (`st.columns`, `st.container`, `st.tabs`, `st.sidebar`, and `st.expander`) rather than custom HTML layout | review |
-| Customization | Any theme, CSS, JavaScript, HTML, component, or third-party visualization customization MUST be introduced through Streamlit's supported configuration or component APIs. Raw HTML/CSS/JavaScript is not a second presentation layer and requires an explicit review justification | review |
-| Configuration | Theme, page configuration, and server settings belong in Streamlit configuration (`.streamlit/config.toml` or `st.set_page_config`), not scattered through page code | review |
-| Accessibility | Every input has a label; interactive controls have descriptive text; color is not the only signal; charts and maps include a textual fallback | review |
-| Security | Never expose secrets in Streamlit code or client-side content. Never call the database directly from browser-executed code | secret scan, review |
-| User text | User-facing strings are centralized where shared and remain English by default; preserve RTL readiness and avoid concatenating untrusted input into HTML | review |
-| Forms and navigation | Use Streamlit forms and page navigation for interaction flows; do not recreate routing or client-side state management with custom JavaScript | review |
+| Structure | Entry point `web/streamlit/app.py`; pages in `web/streamlit/pages/`; reusable UI in `web/streamlit/components/`; navigation declared once in `app.py` with `st.navigation` and `st.Page`. Files and functions are `snake_case` | review |
+| Responsive layout | Every screen works on a phone (about 375 px wide) and on a desktop. Use flexible containers: `st.columns` (keep `wrap=True`, so columns stack on narrow screens), `st.grid` with `min_column_width` for lists of cards, and `st.tabs` or `st.expander` for dense content. Use `width="stretch"` instead of fixed pixel widths; fixed values are for heights only (maps, charts). Keep `initial_sidebar_state="auto"`: the sidebar is hidden on small devices, so primary controls go in the page, not only in the sidebar. Check each screen at phone and desktop width before merge | review |
+| Data access | Option A adopted (CS-15 closed): pages get data exclusively through `web/streamlit/api_client.py`, which calls the FastAPI API over HTTP with a timeout on every call. Streamlit code never embeds SQL, never imports `pymysql`, `sqlalchemy`, `web/backend/`, or `pipeline/`, and holds no database credentials. Only `api_client.py` imports an HTTP client | `tests/test_architecture.py` |
+| Rerun model | Streamlit reruns the page script on every interaction. Keep top-level code cheap: network and heavy work go through cached functions. Put the widgets that feed one query in one `st.form` | review |
+| State | `st.session_state` for session state; initialize keys explicitly at the top of the page and change them next to the widget that owns them | review |
+| Caching | `st.cache_data` for API results, with an explicit `ttl`. `st.cache_resource` only for objects that are safe to share across sessions, such as an HTTP client; never a database connection | review |
+| Layout | Streamlit layout primitives (`st.columns`, `st.container`, `st.tabs`, `st.sidebar`, `st.expander`); no custom HTML layout | `tests/test_architecture.py`, review |
+| Raw HTML and components | No `unsafe_allow_html=True`, `st.html`, or `streamlit.components`. A reviewed exception is added to `RAW_HTML_ALLOWED` in the architecture test, with its justification in the pull request. Third-party components (for example `streamlit-folium` for a Leaflet map) need team approval and a pinned version; prefer built-ins such as `st.map` and `st.pydeck_chart` | `tests/test_architecture.py` |
+| Untrusted text | Restaurant names and addresses come from open datasets, and user queries are user input. Show them with `st.text` or `st.dataframe`; if markdown formatting is needed, escape the value first. Never build HTML from them | review |
+| Theme and config | Theme and server settings live in `.streamlit/config.toml` (Streamlit reads it from the directory where `streamlit run` starts), not in page code. `st.set_page_config` is called once, in `app.py` | review |
+| Secrets | Environment variables through the settings module, as in section 3. No `st.secrets`; `.streamlit/secrets.toml` is git-ignored and unused | `tests/test_architecture.py`, secret scan |
+| Server hardening | Leave XSRF protection and CORS at their defaults unless a pull request justifies a change. Keep the experimental `server.enableAgentApi` option off in `.streamlit/config.toml` and in every deployed app. For a local check by a coding agent, pass it on the command line together with `--server.address=127.0.0.1`, never in a config file | review |
+| Accessibility | Every input has a label; do not rely on color alone; charts and maps come with a table or text equivalent | review |
+| Strings | User-facing text is centralized when shared and English by default. Streamlit has limited right-to-left layout support, so Arabic stays a Could item and needs a spike first | review |
+| Testing | Each page has a smoke test with `streamlit.testing.v1.AppTest`. Interaction tests stub `api_client` and never call the live API | `tests/test_streamlit_smoke.py` |
 
-Streamlit is the single presentation boundary. FastAPI may remain as a backend/API layer, but a new or changed user-facing feature must be wired through Streamlit and must not add a competing frontend surface.
+**Warning for AI-assisted coding.** Streamlit adds widgets and deprecates older patterns in most releases, so generated code often reflects an older version. Check it against the documentation for the pinned version; newer layout tools such as `st.grid` (added in 1.67) and `width="stretch"` (which replaces the older `use_container_width`) are often missing from generated code. Streamlit also publishes agent skills that update with the installed version. Install them with `streamlit skills` so an assistant writes for the version you run.
 
 ## 7. Airflow DAGs
 
@@ -313,8 +319,8 @@ Streamlit is the single presentation boundary. FastAPI may remain as a backend/A
 | Blob paths | `<source>/<yyyy-mm-dd>/<batch_id>/<original_file>` | `zomato/2026-11-18/b0042/zomato.csv` |
 | Streamlit pages and modules | `snake_case`, `.py` extension | `restaurant_search.py` |
 | Streamlit functions | `snake_case` | `render_restaurant_card()` |
-| Branches | `type/area-description`; types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test` | `feat/backend-nl-search` |
-| Commits | Conventional Commits | `feat(backend): add nl search endpoint` |
+| Branches | `type/area-description`; types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`; areas: `backend`, `streamlit`, `pipeline`, `sql`, `docs` | `feat/streamlit-search-page` |
+| Commits | Conventional Commits, with the same areas as scopes | `feat(backend): add nl search endpoint` |
 | Env variables | `UPPER_SNAKE_CASE` | `MYSQL_HOST` |
 | Airflow DAGs | `snake_case` | `restaurants_daily_etl` |
 
@@ -324,6 +330,9 @@ Streamlit is the single presentation boundary. FastAPI may remain as a backend/A
 - Every data-quality rule has tests with both valid and invalid examples.
 - Test the NLP layer with the fixed sample-query set from spike S3 (queries and expected parameters, including failures); it doubles as the regression suite.
 - Loads, upserts, and repository queries get integration tests against a real MySQL container (SHOULD), because idempotency cannot be proven with mocks.
+- Every Streamlit page has an `AppTest` smoke test (`tests/test_streamlit_smoke.py`). Tests that interact with a page stub `web/streamlit/api_client.py`.
+- `AppTest` does not check layout. Check each screen by hand at phone and desktop width before merge.
+- Import boundaries and the raw-HTML rule are checked by `tests/test_architecture.py`. A failing boundary test is a design question, not something to silence.
 - A bug fix includes a test that fails before the fix.
 - Test files may relax some lint rules.
 
@@ -336,8 +345,11 @@ Streamlit is the single presentation boundary. FastAPI may remain as a backend/A
 - [ ] Model output validated and never executed
 - [ ] NLP endpoint rate limited
 - [ ] The application connects with a least-privilege, read-only database user; pipeline and application use separate accounts
+- [ ] The Streamlit app holds no database credentials and does not use `st.secrets`; `.streamlit/secrets.toml` is git-ignored
+- [ ] Untrusted text (restaurant data, user queries) is never rendered as HTML
+- [ ] Streamlit XSRF protection and CORS are at their defaults, and `server.enableAgentApi` is off in config and in deployment
 - [ ] TLS required for MySQL connections
-- [ ] CORS limited to an explicit origin allowlist; HTTPS everywhere
+- [ ] CORS on the API limited to an explicit origin allowlist; HTTPS everywhere
 - [ ] Dependencies pinned in `requirements.txt` or a Python lock file
 - [ ] Python dependency audits run in CI (`pip-audit`) or through Dependabot
 
@@ -349,16 +361,21 @@ Streamlit is the single presentation boundary. FastAPI may remain as a backend/A
 
 | Check | Tool |
 | ------- | ------ |
-| Python lint and format | `ruff check`, `ruff format --check` |
+| Python lint and format | `ruff check`, `ruff format --check` (covers `web/`, `pipeline/`, and `tests/`) |
 | Python types | `mypy` |
-| Python tests | `pytest` |
+| Python tests | `pytest`, including `tests/test_architecture.py` and `tests/test_streamlit_smoke.py` |
 | DAG import test | `pytest` (DAG import test) |
-| Streamlit lint and format | Ruff check and format for `web/streamlit/` |
 | Secret scan | secret-scanning tool (for example `gitleaks`) |
 
 Dependency audits run on the same pipeline but do not block a merge until the team agrees on a severity threshold.
 
-## 12. Change log
+## 12. Open items
+
+Decisions that block or shape rules in this guide. Needed before Sprint 2 work starts (22 Nov), because feature freeze is 28 Nov.
+
+No open items at this time. All design and style decisions required for Sprint 2 are resolved (CS-15 closed with Option A).
+
+## 13. Change log
 
 | Date       | Change                                |
 |------------|---------------------------------------|
@@ -369,3 +386,7 @@ Dependency audits run on the same pipeline but do not block a merge until the te
 | 2026-11-19 | v0.7: consolidated source layout under `web/backend/` and `web/frontend/`; moved frontend package and ESLint configuration into `web/frontend/`; removed frontend tests; added owned TBD-marker rules |
 | 2026-11-20 | v0.8: Streamlit adopted as the primary and only approved web presentation framework; replaced React/MUI frontend rules with Streamlit conventions |
 | 2026-11-20 | v0.9: removed obsolete Node, React, ESLint, and Prettier tooling and updated repository settings for Streamlit |
+| 2026-11-22 | v0.10: Streamlit required but no longer exclusive (scope tracked as CS-14); Streamlit reads data through one API client (proposed, CS-15); import boundaries, raw-HTML, and `st.secrets` rules enforced by an architecture test; Streamlit smoke tests; Streamlit version pinned; layout and cross-references fixed; open items restored |
+| 2026-11-23 | v0.11: removed the price-display rule (CS-11); Streamlit covers screens for PC and phone with a flexible layout (CS-14 closed), with a responsive-layout rule and a manual layout check; clarified CS-15; `server.enableAgentApi` allowed only as a local command-line flag; `streamlit skills` named |
+| 2026-11-23 | v0.12: closed CS-15 (adopted Option A: Streamlit accesses data exclusively via FastAPI over HTTP through `web/streamlit/api_client.py`, holding no database credentials); updated open items and data access rules |
+| 2026-11-23 | v0.12: closed CS-15 (adopted Option A: Streamlit accesses data exclusively via FastAPI over HTTP through `web/streamlit/api_client.py`, holding no database credentials); updated open items and data access rules |

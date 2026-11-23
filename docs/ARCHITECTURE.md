@@ -1,7 +1,7 @@
 # Architecture and Design
 
-> **Status:** Draft v0.2, a living document. Items marked **TBD** depend on spikes S1-S4 and may change. Diagrams use Mermaid and render on GitHub & local supported preview extensions.
-> **Last updated:** 2026-10-30
+> **Status:** Draft v0.4, a living document. Items marked **TBD** depend on spikes S1-S4 and may change. Diagrams use Mermaid and render on GitHub & local supported preview extensions.
+> **Last updated:** 2026-11-23
 
 ## 1. Goals and constraints
 
@@ -73,6 +73,8 @@ flowchart TB
     API --> GLD
     NLPA --> HF
 ```
+
+The Streamlit presentation layer (`web/streamlit/`) interacts with the FastAPI backend strictly over HTTP/HTTPS via `web/streamlit/api_client.py`. The Streamlit app holds no database credentials, embeds no SQL, and never imports `pymysql`, `sqlalchemy`, or backend/pipeline modules directly.
 
 ## 5. Medallion layers
 
@@ -332,7 +334,7 @@ classDiagram
 
 ## 11. Security
 
-- The Streamlit app never connects to MySQL; only the backend does.
+- The Streamlit app never connects to MySQL and holds no database credentials; it accesses data exclusively through the FastAPI backend over HTTP/HTTPS via `web/streamlit/api_client.py`.
 - Parameterized queries only; model output is never executed.
 - Secrets (database password, Hugging Face key, Blob keys) are stored in Azure Key Vault or protected app settings, loaded from environment variables, and never committed.
 - HTTPS everywhere; CORS limited to the Streamlit presentation origin.
@@ -392,7 +394,7 @@ If Azure access or cost blocks any Must item, the fallback is local MySQL and Do
 | Raw storage | Azure Blob Storage | Decided |
 | Orchestration | Apache Airflow | Decided (hosting TBD, S2) |
 | Backend | FastAPI | Decided |
-| Web presentation | Streamlit | Decided |
+| Web presentation | Streamlit (accesses data via FastAPI over HTTP) | Decided |
 | NLP | Hugging Face Inference Providers | Decided (model TBD, S3) |
 | Hosting | App Service, Linux VM | Decided (VM Should) |
 | Version control | Git and GitHub | Decided |
@@ -429,3 +431,4 @@ FastAPI generates interactive API documentation automatically, which can serve a
 |------|--------|
 | 2026-10-30 | v0.1 created |
 | 2026-11-20 | v0.3: adopted Streamlit as the primary web presentation framework and updated application and deployment views |
+| 2026-11-23 | v0.4: codified Option A data access (Streamlit accesses data exclusively via FastAPI over HTTP through `web/streamlit/api_client.py`, holding no database credentials); updated component view, security notes, and status header |

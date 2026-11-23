@@ -164,3 +164,4 @@ Everyone contributes to documentation and testing.
 |------|--------|--------|
 | 2026-10-30 | v0.1 created | Initial draft |
 | 2026-10-30 | v0.2: stack aligned to team proposal; calendar and scope tiers added | Team proposal and deadline constraints |
+| 2026-11-23 | v0.3: confirmed Option A for Streamlit data access (calling FastAPI over HTTP with no database credentials) per CODE_STYLE.md CS-15 resolution | Architecture alignment |
