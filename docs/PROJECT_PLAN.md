@@ -7,7 +7,7 @@
 
 **Problem.** Restaurant data is spread across datasets with inconsistent formats, missing values, duplicates, and different geographic representations, which makes it hard to search, compare, and explore across locations.
 
-**Objectives**
+### Objectives
 
 1. Integrate restaurant data into one centralized, multi-source-capable MySQL database on Azure (delivering the Zomato dataset end-to-end as Increment 1, followed by additional sources in Increment 2).
 2. Build automated, scheduled ETL pipelines using Bronze, Silver, and Gold layers with programmatic fetching, change detection, and incremental loads.
@@ -17,7 +17,7 @@
 6. Deploy the database and application on Microsoft Azure with centralized secrets (`docs/SECRETS.md`) and non-secret settings (`config/settings.toml`).
 7. Document the system to the academy's standard.
 
-**Success criteria**
+### Success criteria
 
 - The pipeline fetches Zomato dynamically via the Kaggle API, runs end-to-end through Airflow with change detection and incremental upserts, logs every rejected/warned record with a rule name and reason, and enforces the 15% quarantine gate.
 - The schema preserves per-record provenance (`source_id`, `source_restaurant_id`, `batch_id`, `match_group_id`) ready for Increment 2 source expansion, and integrates a second source once Increment 1 is complete.
@@ -33,7 +33,7 @@ To keep Agile increments small and shippable while refactoring incoming drafts (
 
 ## 3. Scope tiers (MoSCoW)
 
-**Must (MVP — Increment 1 baseline + core architecture)**
+### Must (MVP — Increment 1 baseline + core architecture)
 
 - M1: Zomato dataset fetched programmatically via Kaggle API through Bronze (Azure Blob / local fallback), Silver (cleaned MySQL tables), and Gold (views/spatial indexes)
 - M2: Multi-source provenance schema (`source_metadata`, `source_id`, `match_group_id`) in Increment 1; second source integrated in Increment 2 (S1)
@@ -46,7 +46,7 @@ To keep Agile increments small and shippable while refactoring incoming drafts (
 - M9: Centralized secrets (`.env.example` / Key Vault) and portable non-secret config (`config/settings.toml` + `constants.py`); MySQL on Azure, backend and Streamlit co-deployed on App Service
 - M10: Documentation, README, demo
 
-**Should**
+### Should
 
 - Airflow deployed on an Azure Linux VM
 - Azure Key Vault references in production
@@ -54,7 +54,7 @@ To keep Agile increments small and shippable while refactoring incoming drafts (
 - Cross-source duplicate matching rules (Increment 2, once Source 2 lands)
 - Unit tests for quality rules, architecture boundary tests (`tests/test_architecture.py`), and Streamlit `AppTest` smoke tests
 
-**Could (low priority / deferred)**
+### Could (low priority / deferred)
 
 - Full-stack local `docker-compose.yml` and expanded testability suite (`docs/TESTING.md`, coverage gates, contract tests) — scheduled immediately after refactoring completes
 - Graceful maintenance message in Streamlit when FastAPI is unreachable
@@ -110,26 +110,26 @@ Everyone contributes to documentation and testing.
 
 ## 7. Iteration plan
 
-**Sprint 0: 30-31 Oct (documentation)**
+### Sprint 0: 30-31 Oct (documentation)
 
 - Tasks: initial five documents; repository skeleton and board; role planning; Azure access check (S4).
 - Deliverables: docs v0.2, repo structure.
 
-**Break: 1-14 Nov (optional prep)**
+### Break: 1-14 Nov (optional prep)
 
 - Toolchains (Python, Docker); Azure resource group and budget alert; Zomato dataset inspection (encoding, currencies, zero ratings, zero coordinates).
 
-**Sprint 1: 15-21 Nov (data foundation and drafts)**
+### Sprint 1: 15-21 Nov (data foundation and drafts)
 
 - Tasks: initial ETL, SQL, Airflow, FastAPI, and Streamlit prototypes (`_incoming/`); architecture and coding standards refinement.
 - Deliverables: working prototypes and aligned specifications.
 
-**Sprint 2: 22-28 Nov (Increment 1 refactoring, linkage, and deployment)**
+### Sprint 2: 22-28 Nov (Increment 1 refactoring, linkage, and deployment)
 
 - Tasks: finalize specs (`SECRETS.md`, `DATA_SOURCES.md`, `DATA_QUALITY_RULES.md`, `CUISINE_VOCABULARY.md`, `UI_UX.md`, `AGENTS.md`); refactor `_incoming/` drafts into `pipeline/`, `sql/`, `web/backend/`, `web/streamlit/`, and `config/settings.toml`; dynamic Kaggle fetch + `@weekly` change-checked Airflow DAG + 15% quality gate; co-deploy FastAPI and Streamlit; complete post-refactoring `README.md` §7 and Docker setup; start Increment 2 source integration if capacity allows. **Feature freeze 28 Nov.**
 - Deliverables: cohesive, boundary-tested Increment 1 deployed and running end-to-end.
 
-**Final: 29-30 Nov (hardening and delivery)**
+### Final: 29-30 Nov (hardening and delivery)
 
 - Tasks: bug fixes only; finalize README run instructions and test suite; demo rehearsal; record a backup demo video.
 - Deliverables: final submission, demo, retrospective notes.
@@ -170,7 +170,7 @@ Everyone contributes to documentation and testing.
 ## 11. Change log
 
 | Date | Change | Reason |
-|------|--------|--------|
+| --- | --- | --- |
 | 2026-10-30 | v0.1 created | Initial draft |
 | 2026-10-30 | v0.2: stack aligned to team proposal; calendar and scope tiers added | Team proposal and deadline constraints |
 | 2026-11-23 | v0.3: confirmed Option A for Streamlit data access (calling FastAPI over HTTP with no database credentials) per `CODE_STYLE.md` CS-15 resolution | Architecture alignment |

@@ -72,7 +72,7 @@ These apply to Python, SQL, the API, and the Streamlit app alike.
 | FastAPI | Pydantic models for request and response schemas; routers per resource; one dependency that opens and closes the DB connection per request; routes that use PyMySQL are plain `def`, not `async def`, because PyMySQL blocks; proper status codes; see section 5 | review |
 | Dependencies | Pinned. The API, the Streamlit app, and Airflow each have their own requirements file: Airflow constraint files commonly conflict with an application stack, and the apps deploy separately | review, CI |
 
-**Example**
+### Example
 
 ```python
 """Rating validation for the Silver layer."""
@@ -84,7 +84,6 @@ import pandas as pd
 from pipeline.constants import MAX_RATING, MIN_RATING, RULE_RATING_OUT_OF_RANGE
 
 logger = logging.getLogger(__name__)
-
 
 def split_valid_ratings(
     restaurants_df: pd.DataFrame,
@@ -152,7 +151,7 @@ def split_valid_ratings(
 | Scripts | Numbered files in `sql/` (`001_create_tables.sql`, `002_create_gold_views.sql`). There are no migrations: the schema is rebuilt, not altered. To change it, edit the numbered script, recreate the database, and reload from Bronze (Silver and Gold are derived data). Table scripts use `CREATE TABLE IF NOT EXISTS`; Gold view scripts use `CREATE OR REPLACE VIEW`. `sql/000_reset.sql` drops everything and is for development and demo databases only. Revisit this rule if data that Bronze cannot rebuild, such as `pipeline_runs` history, must survive a schema change. MySQL has no `IF NOT EXISTS` for indexes, columns, or views. Keep `;` out of comments and strings so simple script runners can split statements | review |
 | Spatial | Gold map tables hold `location POINT SRID 4326 NOT NULL` with a `SPATIAL INDEX`; rows without valid coordinates are not in them. Build every point the same way: `ST_SRID(POINT(longitude, latitude), 4326)`. `POINT(x, y)` takes longitude first, but WKT text with SRID 4326 is latitude first, and swapped coordinates raise no error. Radius search uses a bounding box on the index (`MBRContains`), then the exact `ST_Distance_Sphere` check (meters); the distance function alone does not use the index. Validate coordinate ranges before building a point | review, tests |
 
-**Example** (named `%(name)s` placeholders are the PyMySQL style)
+### Example (named `%(name)s` placeholders are the PyMySQL style)
 
 ```sql
 SELECT
@@ -169,7 +168,7 @@ ORDER BY r.rating DESC, r.restaurant_id ASC
 LIMIT %(limit)s OFFSET %(offset)s;
 ```
 
-**Spatial example**
+### Spatial example
 
 ```sql
 -- Load a point. POINT takes longitude first, then latitude.
@@ -210,7 +209,6 @@ MAX_SEARCH_RADIUS_M = 50_000.0
 MAX_ABS_LATITUDE = 85.0
 MAX_ABS_LONGITUDE = 180.0
 BOX_MARGIN = 1.01
-
 
 def bounding_box_wkt(latitude: float, longitude: float, radius_m: float) -> str:
     """Return a WKT rectangle that fully contains a search circle.
@@ -384,8 +382,8 @@ No open items at this time. All design and style decisions required for refactor
 
 ## 13. Change log
 
-| Date       | Change                                |
-|------------|---------------------------------------|
+| Date | Change |
+| --- | --- |
 | 2026-10-30 | v0.2 created as an adoptable template |
 | 2026-11-18 | v0.3: added status header, enforcement columns, data conventions, API conventions, NLP adapter rules, Git and CI, reference configuration, and open items; fixed MySQL script rules (`IF NOT EXISTS` is not valid for views and indexes); corrected the Python example (unused import, bare `df`, unrated ratings, rejection reason); fixed typo and naming gaps |
 | 2026-11-18 | v0.4: JavaScript (D-7 closed) with JSDoc for complex code and a reference ESLint config; third-party open model for NLP (S3 chooses the model) |

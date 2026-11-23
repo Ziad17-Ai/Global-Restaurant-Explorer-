@@ -201,8 +201,8 @@ Each requirement links to a user story. Automated architecture boundary tests (`
 
 ## 11. Change log
 
-| Date       | Change       |
-|------      | --------     |
+| Date | Change |
+| --- | --- |
 | 2026-10-30 | v0.1 created |
 | 2026-10-30 | v0.2: aligned to team proposal; added admin stories, currency and Egypt coverage notes |
 | 2026-11-23 | v0.3: codified Option A data access (Streamlit calls FastAPI over HTTP via `api_client.py`, holding no database credentials); updated testing scope to include Streamlit `AppTest` smoke tests |

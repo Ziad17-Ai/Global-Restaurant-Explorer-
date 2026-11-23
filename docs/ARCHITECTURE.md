@@ -322,7 +322,7 @@ erDiagram
 
 ### 9.1 Enrichment and inference
 
-**Derived during standardization (current increment):**
+### Derived during standardization (current increment)
 
 | Field | Derived from | Rule |
 | --- | --- | --- |
@@ -340,7 +340,7 @@ erDiagram
 
 **Approach:** constrained extraction. The model fills a fixed parameter object and never writes SQL.
 
-```
+```text
 SearchParams {
   country?: string
   city?: string
@@ -354,7 +354,7 @@ SearchParams {
 }
 ```
 
-**Components**
+### Components
 
 - **Adapter interface:** `parse(query) -> SearchParams`, with a Hugging Face implementation and a rule-based implementation.
 - **Validation:** output checked against the schema and the vocabulary of known countries, cities, localities, and canonical cuisines. Unknown values are dropped or flagged.
@@ -388,7 +388,7 @@ sequenceDiagram
     W-->>U: list and map markers
 ```
 
-**Backend classes (outline)**
+### Backend classes (outline)
 
 ```mermaid
 classDiagram
@@ -566,7 +566,7 @@ FastAPI generates interactive API documentation automatically, which can serve a
 ## 17. Change log
 
 | Date | Change |
-|------|--------|
+| --- | --- |
 | 2026-10-30 | v0.1 created |
 | 2026-11-20 | v0.3: adopted Streamlit as the primary web presentation framework and updated application and deployment views |
 | 2026-11-23 | v0.4: codified Option A data access (Streamlit accesses data exclusively via FastAPI over HTTP through `web/streamlit/api_client.py`, holding no database credentials); updated component view, security notes, and status header |
