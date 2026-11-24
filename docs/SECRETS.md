@@ -69,12 +69,15 @@ reports_path = "data/reports"
 logs_path = "logs"
 bronze_container = "bronze"
 
+[database]
+connect_timeout_seconds = 15
+
 [sources.zomato]
-kaggle_dataset = "shrutimehta/zomato-restaurants-data"   # confirm (DATA_SOURCES.md, DS-1)
+kaggle_dataset = "shrutimehta/zomato-restaurants-data"
 schedule = "@weekly"
 skip_if_unchanged = true
 file_name = "zomato.csv"
-file_encoding = "latin-1"                                 # confirm (DS-2)
+file_encoding = "latin-1"                                 # confirm (DATA_SOURCES.md, DS-2)
 
 [nlp]
 model_id = "replace_after_spike_s3"     # decision D-3
@@ -90,6 +93,8 @@ cache_ttl_seconds = 3600
 nlp_rate_limit_per_minute = 30
 page_default_limit = 20
 page_max_limit = 100
+allow_csv_fallback_in_local = true
+local_fallback_csv_path = "data/zomato.csv"
 
 [streamlit]
 api_timeout_seconds = 10

@@ -36,7 +36,7 @@ The data pipeline is the core of the project. The web app is the layer users int
 | AI agent and contributor navigation guide | [`AGENTS.md`](AGENTS.md) |
 | Version control, branching, collaboration | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | Testing and validation plan | [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) section 9 (`docs/TESTING.md` deferred until post-refactoring) |
-| Deployment and execution instructions | This file, section 7 (completed post-refactoring) |
+| Deployment and execution instructions | This file, section 7 (local Python runbook live; `docker-compose.yml` post-refactoring) |
 
 ## 3. Features
 
@@ -94,19 +94,52 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 7. Getting started
 
-> **Post-refactoring deliverable.** Full step-by-step execution instructions and local `docker-compose.yml` orchestration will be completed once the refactoring and linkage of `_incoming/` modules into `pipeline/`, `sql/`, `web/backend/`, and `web/streamlit/` finish, avoiding premature instructions that drift during refactoring.
+> **Note:** Full `docker-compose.yml` multi-container orchestration (Airflow + MySQL) is scheduled for the next post-refactoring step. The local Python workflow below runs end-to-end today (including a local CSV fallback in the backend when MySQL is offline in `APP_ENV=local`).
 
-- **Prerequisites:** Python 3.12+, MySQL 8.0, Docker (for local Airflow / MySQL)
-- **Clone:**
+- **Prerequisites:** Python 3.12+ (3.13 recommended), optional MySQL 8.0
+- **1. Clone & install:**
 
   ```bash
   git clone https://github.com/nhahub/NHA-5-083.git
   cd NHA-5-083
+  python -m venv .venv
+  # Windows PowerShell: .\.venv\Scripts\python.exe -m pip install -r pipeline/requirements.txt -r web/backend/requirements.txt -r web/streamlit/requirements.txt
+  # Linux/macOS:        ./.venv/bin/python -m pip install -r pipeline/requirements.txt -r web/backend/requirements.txt -r web/streamlit/requirements.txt
   ```
 
-- **Configuration:** copy [`.env.example`](.env.example) to `.env` and fill in MySQL, Kaggle API, Blob Storage, Hugging Face, and Airflow secrets (see [`docs/SECRETS.md`](docs/SECRETS.md)). Non-secret runtime settings live in `config/settings.toml`. Streamlit holds no database credentials and needs only `STREAMLIT_BACKEND_URL`. Never commit `.env`.
-- **Database setup:** run the numbered scripts in `sql/` in order (finalized during refactoring)
-- **Run the pipeline / backend / Streamlit app:** finalized post-refactoring
+- **2. Configuration:** Copy [`.env.example`](.env.example) to `.env` (keep `APP_ENV=local` for local dev). Never commit `.env`. Non-secret runtime settings live in [`config/settings.toml`](config/settings.toml) and [`config/cuisine_map.csv`](config/cuisine_map.csv). Streamlit holds no database credentials and reads only `STREAMLIT_BACKEND_URL`.
+- **3. Database setup (MySQL 8.0, optional locally in `APP_ENV=local`):** Execute the numbered scripts in [`sql/`](sql/001_create_tables.sql) in order:
+  1. [`sql/000_reset.sql`](sql/000_reset.sql) (dev/demo reset only)
+  2. [`sql/001_create_tables.sql`](sql/001_create_tables.sql)
+  3. [`sql/002_create_gold_views.sql`](sql/002_create_gold_views.sql)
+- **4. Run the ETL pipeline (validation dry-run or full MySQL run):**
+
+  ```bash
+  .\.venv\Scripts\python.exe -m pipeline.runner --source-csv data/zomato.csv --dry-run
+  ```
+
+- **5. Start the FastAPI backend & inspect OpenAPI `/docs`:**
+
+  ```bash
+  .\.venv\Scripts\python.exe -m uvicorn web.backend.main:app --host 127.0.0.1 --port 8000
+  ```
+
+  Interactive API docs: `http://127.0.0.1:8000/docs` · Liveness probe: `http://127.0.0.1:8000/api/health`
+- **6. Start the Streamlit web app:**
+
+  ```bash
+  .\.venv\Scripts\python.exe -m streamlit run web/streamlit/app.py
+  ```
+
+- **7. Verify lint, types, and tests:**
+
+  ```bash
+  .\.venv\Scripts\python.exe -m ruff check pipeline web tests
+  .\.venv\Scripts\python.exe -m ruff format --check pipeline web tests
+  .\.venv\Scripts\python.exe -m mypy .
+  .\.venv\Scripts\python.exe -m pytest -v
+  ```
+
 - **Deployed application URL:** TBD
 
 ## 8. Repository structure (target)
