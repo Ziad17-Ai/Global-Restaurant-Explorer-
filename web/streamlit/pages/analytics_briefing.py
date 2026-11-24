@@ -158,7 +158,7 @@ if summary is not None:
     )
     rating_dist_df = _bucket_to_df(
         summary.get("rating_distribution") or [],
-        label_keys=("rating_bucket", "label", "name"),
+        label_keys=("rating_label", "rating_bucket", "label", "name"),
         label_col="Rating band",
     )
 

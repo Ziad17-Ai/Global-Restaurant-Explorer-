@@ -82,6 +82,8 @@ def format_source_attribution(
 ) -> str:
     """Format source provenance and license attribution."""
     source = (source_name or "").strip() or UNKNOWN_SOURCE_LABEL
+    if source.islower():
+        source = source.title()
     license_label = (source_license or "").strip() or UNKNOWN_LICENSE_LABEL
     return f"{source} · {license_label}"
 

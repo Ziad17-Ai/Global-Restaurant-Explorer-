@@ -258,8 +258,8 @@ class StubAPIClient:
                 {"label": "Tier 2", "price_range": 2, "restaurant_count": 3113},
             ],
             "rating_distribution": [
-                {"rating_bucket": "Unrated", "restaurant_count": 2148},
-                {"rating_bucket": "4.0–5.0", "restaurant_count": 2100},
+                {"rating_label": "Unrated", "count": 2148},
+                {"rating_label": "Very Good", "count": 2100},
             ],
         }
 
@@ -274,8 +274,8 @@ class StubAPIClient:
             "restaurant_count": 2,
             "city_count": 1,
             "avg_rating": 4.5,
-            "top_cities": [{"city_name": "Cairo", "restaurant_count": 2}],
-            "top_cuisines": [{"cuisine_name": "Italian", "restaurant_count": 1}],
+            "top_cities": ["Cairo"],
+            "top_cuisines": ["Italian"],
             "top_restaurants": self._items,
         }
 

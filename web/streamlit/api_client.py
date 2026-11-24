@@ -194,6 +194,7 @@ class AnalyticsBucket(TypedDict, total=False):
     country_name: str
     city_name: str
     price_range: int
+    rating_label: str
     rating_bucket: str
     count: int
     restaurant_count: int
@@ -230,8 +231,8 @@ class DestinationProfile(TypedDict):
     restaurant_count: int
     city_count: int
     avg_rating: float | None
-    top_cities: list[AnalyticsBucket]
-    top_cuisines: list[AnalyticsBucket]
+    top_cities: list[str]
+    top_cuisines: list[str]
     top_restaurants: list[RestaurantItem]
 
 

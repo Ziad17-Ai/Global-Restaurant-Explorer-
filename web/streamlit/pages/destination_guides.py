@@ -7,7 +7,7 @@ import contextlib
 import pandas as pd
 import streamlit as st
 
-from web.streamlit.api_client import AnalyticsBucket, APIError, DestinationProfile
+from web.streamlit.api_client import APIError, DestinationProfile
 from web.streamlit.components.feedback import (
     render_api_error,
     render_empty_state,
@@ -103,31 +103,22 @@ else:
         st.caption(f"Editorial attribution: {escape_markdown(profile['attribution'])}")
         st.divider()
 
-        def _summary_table(
-            buckets: list[AnalyticsBucket],
+        def _ranked_list_table(
+            entries: list[str],
             *,
-            name_keys: tuple[str, ...],
             col_name: str,
         ) -> pd.DataFrame:
-            rows: list[dict[str, object]] = []
-            for bucket in buckets:
-                label = "Unknown"
-                for candidate in name_keys:
-                    if candidate in bucket and bucket[candidate] is not None:  # type: ignore[literal-required]
-                        label = str(bucket[candidate])  # type: ignore[literal-required]
-                        break
-                count_val = bucket.get("restaurant_count")
-                if count_val is None:
-                    count_val = bucket.get("count", 0)
-                rows.append({col_name: label, "Restaurants": int(count_val)})
+            rows = [
+                {"Rank": idx, col_name: entry}
+                for idx, entry in enumerate(entries, start=1)
+            ]
             return pd.DataFrame(rows)
 
         col_cities, col_cuisines = st.columns(2, wrap=True)
         with col_cities:
             st.subheader("Top cities")
-            top_cities_df = _summary_table(
+            top_cities_df = _ranked_list_table(
                 profile.get("top_cities") or [],
-                name_keys=("city_name", "label", "name"),
                 col_name="City",
             )
             if top_cities_df.empty:
@@ -141,9 +132,8 @@ else:
                 )
         with col_cuisines:
             st.subheader("Top cuisines")
-            top_cuisines_df = _summary_table(
+            top_cuisines_df = _ranked_list_table(
                 profile.get("top_cuisines") or [],
-                name_keys=("cuisine_name", "label", "name"),
                 col_name="Cuisine",
             )
             if top_cuisines_df.empty:
