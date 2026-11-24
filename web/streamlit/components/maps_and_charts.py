@@ -21,11 +21,19 @@ from web.streamlit.constants import (
     BASEMAP_LIGHT,
     CHART_HEIGHT_PX,
     CITY_MAP_ZOOM,
+    COLOR_DARK_FOCUS,
+    COLOR_DARK_HIGH_RATING,
+    COLOR_DARK_LOW_RATING,
+    COLOR_DARK_MID_RATING,
+    COLOR_DARK_ROUTE_PATH,
+    COLOR_DARK_UNRATED,
     COLOR_FOCUS,
     COLOR_HIGH_RATING,
     COLOR_LOW_RATING,
     COLOR_MID_RATING,
     COLOR_ROUTE_PATH,
+    COLOR_STROKE_DARK,
+    COLOR_STROKE_LIGHT,
     COLOR_UNRATED,
     DEFAULT_MAP_CENTER_LAT,
     DEFAULT_MAP_CENTER_LON,
@@ -40,25 +48,28 @@ from web.streamlit.constants import (
 )
 
 
-def get_active_basemap() -> str:
-    """Return a light or dark neutral CARTO basemap matching `st.context.theme`."""
+def is_dark_theme() -> bool:
+    """Return True when Streamlit reports dark mode via `st.context.theme`."""
     try:
         theme_type = getattr(st.context.theme, "type", None)
     except RuntimeError:
         theme_type = None
-    if theme_type == "dark":
-        return BASEMAP_DARK
-    return BASEMAP_LIGHT
+    return theme_type == "dark"
 
 
-def _rating_color(rating: float | None) -> list[int]:
+def get_active_basemap() -> str:
+    """Return a light or dark neutral CARTO GL basemap matching `st.context.theme`."""
+    return BASEMAP_DARK if is_dark_theme() else BASEMAP_LIGHT
+
+
+def _rating_color(rating: float | None, *, dark_mode: bool) -> list[int]:
     if rating is None:
-        return COLOR_UNRATED
+        return COLOR_DARK_UNRATED if dark_mode else COLOR_UNRATED
     if rating >= RATING_TIER_HIGH:
-        return COLOR_HIGH_RATING
+        return COLOR_DARK_HIGH_RATING if dark_mode else COLOR_HIGH_RATING
     if rating >= RATING_TIER_MID:
-        return COLOR_MID_RATING
-    return COLOR_LOW_RATING
+        return COLOR_DARK_MID_RATING if dark_mode else COLOR_MID_RATING
+    return COLOR_DARK_LOW_RATING if dark_mode else COLOR_LOW_RATING
 
 
 def _rating_tier_label(rating: float | None) -> str:
@@ -73,6 +84,8 @@ def _rating_tier_label(rating: float | None) -> str:
 
 def build_map_points_df(
     items: Sequence[RestaurantItem | MapPointItem],
+    *,
+    dark_mode: bool = False,
 ) -> pd.DataFrame:
     """Convert restaurant/map point records into a validated PyDeck DataFrame."""
     rows: list[dict[str, object]] = []
@@ -106,7 +119,7 @@ def build_map_points_df(
                     item.get("source_name"),
                     item.get("source_license"),
                 ),
-                "marker_color": _rating_color(rating),
+                "marker_color": _rating_color(rating, dark_mode=dark_mode),
                 "marker_radius": MARKER_RADIUS_PX,
             }
         )
@@ -122,7 +135,10 @@ def render_restaurant_map(
     focus_point: tuple[float, float, str] | None = None,
 ) -> None:
     """Render a theme-aware restaurant map paired with a dataframe equivalent."""
-    points_df = build_map_points_df(items)
+    dark_mode = is_dark_theme()
+    stroke_color = COLOR_STROKE_DARK if dark_mode else COLOR_STROKE_LIGHT
+    focus_color = COLOR_DARK_FOCUS if dark_mode else COLOR_FOCUS
+    points_df = build_map_points_df(items, dark_mode=dark_mode)
     if points_df.empty:
         st.info(
             "No restaurants with valid coordinates match the current view.",
@@ -158,10 +174,13 @@ def render_restaurant_map(
                 id=f"{key}_points",
                 get_position=["longitude", "latitude"],
                 get_fill_color="marker_color",
+                get_line_color=stroke_color,
                 get_radius="marker_radius",
                 radius_units="pixels",
                 radius_min_pixels=5,
                 radius_max_pixels=14,
+                stroked=True,
+                line_width_min_pixels=1,
                 pickable=True,
             )
         ]
@@ -187,11 +206,11 @@ def render_restaurant_map(
                     data=focus_df,
                     id=f"{key}_focus",
                     get_position=["longitude", "latitude"],
-                    get_fill_color=COLOR_FOCUS,
+                    get_fill_color=focus_color,
                     get_radius=FOCUS_MARKER_RADIUS_PX,
                     radius_units="pixels",
                     stroked=True,
-                    get_line_color=[255, 255, 255, 230],
+                    get_line_color=stroke_color,
                     line_width_min_pixels=2,
                     pickable=True,
                 )
@@ -223,10 +242,16 @@ def render_restaurant_map(
             key=key,
             alt=alt_text,
         )
-        st.caption(
-            "Marker legend: Forest Green = 4.0+, Terracotta = 3.0–3.9, "
-            "Amber = Below 3.0, Slate Gray = Unrated (no rating in source)."
-        )
+        if dark_mode:
+            st.caption(
+                "Marker legend: Sage Green = 4.0+, Warm Terracotta = 3.0–3.9, "
+                "Ochre = Below 3.0, Stone Gray = Unrated (no rating in source)."
+            )
+        else:
+            st.caption(
+                "Marker legend: Forest Green = 4.0+, Terracotta = 3.0–3.9, "
+                "Amber = Below 3.0, Slate Gray = Unrated (no rating in source)."
+            )
 
     with table_tab:
         display_columns = [
@@ -272,7 +297,10 @@ def render_journey_route_map(
     key: str,
 ) -> None:
     """Render an ordered itinerary map with connecting segments and a leg table."""
-    points_df = build_map_points_df(stops)
+    dark_mode = is_dark_theme()
+    stroke_color = COLOR_STROKE_DARK if dark_mode else COLOR_STROKE_LIGHT
+    route_color = COLOR_DARK_ROUTE_PATH if dark_mode else COLOR_ROUTE_PATH
+    points_df = build_map_points_df(stops, dark_mode=dark_mode)
     if points_df.empty:
         st.info(
             "Selected itinerary stops do not include valid map coordinates.",
@@ -295,8 +323,11 @@ def render_journey_route_map(
                 id=f"{key}_stops",
                 get_position=["longitude", "latitude"],
                 get_fill_color="marker_color",
+                get_line_color=stroke_color,
                 get_radius=FOCUS_MARKER_RADIUS_PX,
                 radius_units="pixels",
+                stroked=True,
+                line_width_min_pixels=1,
                 pickable=True,
             )
         ]
@@ -310,7 +341,7 @@ def render_journey_route_map(
                     data=path_df,
                     id=f"{key}_path",
                     get_path="path",
-                    get_color=COLOR_ROUTE_PATH,
+                    get_color=route_color,
                     width_scale=1,
                     width_min_pixels=3,
                     pickable=False,

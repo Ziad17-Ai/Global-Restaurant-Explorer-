@@ -364,3 +364,32 @@ def test_mysql_repository_executes_parameterized_queries(
     assert items[0].name == "Pasta Palace"
     assert items[0].cuisines == ["Italian", "Pizza"]
     assert fake_cursor.execute.call_count == 2
+
+
+def test_local_mysql_fallback_cooldown_avoids_repeated_connect_probes(
+    test_settings: BackendSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After one failed local MySQL connect, subsequent calls use cooldown fallback."""
+    from web.backend.repositories import db
+
+    local_settings = test_settings.model_copy(
+        update={"app_env": "local", "backend_allow_csv_fallback_in_local": True}
+    )
+    monkeypatch.setattr(db, "settings", local_settings)
+    db.reset_mysql_fallback_cooldown()
+
+    connect_calls = 0
+
+    def _fail_connect(*_args: object, **_kwargs: object) -> object:
+        nonlocal connect_calls
+        connect_calls += 1
+        raise OSError("Connection refused")
+
+    monkeypatch.setattr(db.pymysql, "connect", _fail_connect)
+
+    assert list(db.get_db_connection()) == [None]
+    assert list(db.get_db_connection()) == [None]
+
+    assert connect_calls == 1
+    db.reset_mysql_fallback_cooldown()

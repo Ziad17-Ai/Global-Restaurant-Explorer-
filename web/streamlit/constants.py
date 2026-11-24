@@ -68,8 +68,8 @@ UNRATED_DETAIL_LABEL = "No rating in source"
 UNKNOWN_SOURCE_LABEL = "Dataset source"
 UNKNOWN_LICENSE_LABEL = "License unspecified"
 
-BASEMAP_LIGHT = "carto-positron"
-BASEMAP_DARK = "carto-darkmatter"
+BASEMAP_LIGHT = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+BASEMAP_DARK = "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
 CHART_HEIGHT_PX = 360
 MAP_HEIGHT_PX = 480
 DEFAULT_MAP_CENTER_LAT = 26.0
@@ -78,12 +78,24 @@ DEFAULT_MAP_ZOOM = 2
 CITY_MAP_ZOOM = 11
 DETAIL_MAP_ZOOM = 13
 
-COLOR_HIGH_RATING: list[int] = [30, 77, 59, 215]
-COLOR_MID_RATING: list[int] = [166, 61, 47, 215]
-COLOR_LOW_RATING: list[int] = [180, 83, 9, 215]
+# Light theme (*Warm Paper*) spatial colors aligned with docs/UI_UX.md §3.3
+COLOR_HIGH_RATING: list[int] = [30, 77, 59, 225]
+COLOR_MID_RATING: list[int] = [166, 61, 47, 225]
+COLOR_LOW_RATING: list[int] = [180, 83, 9, 225]
 COLOR_UNRATED: list[int] = [100, 116, 139, 195]
-COLOR_FOCUS: list[int] = [166, 61, 47, 240]
-COLOR_ROUTE_PATH: list[int] = [166, 61, 47, 200]
+COLOR_FOCUS: list[int] = [166, 61, 47, 245]
+COLOR_ROUTE_PATH: list[int] = [166, 61, 47, 210]
+COLOR_STROKE_LIGHT: list[int] = [250, 249, 245, 235]
+
+# Dark theme (*Warm Ink*) spatial colors aligned with docs/UI_UX.md §3.3
+COLOR_DARK_HIGH_RATING: list[int] = [82, 168, 138, 235]
+COLOR_DARK_MID_RATING: list[int] = [224, 122, 107, 235]
+COLOR_DARK_LOW_RATING: list[int] = [229, 161, 75, 235]
+COLOR_DARK_UNRATED: list[int] = [168, 162, 158, 210]
+COLOR_DARK_FOCUS: list[int] = [196, 77, 61, 245]
+COLOR_DARK_ROUTE_PATH: list[int] = [224, 122, 107, 220]
+COLOR_STROKE_DARK: list[int] = [23, 22, 20, 235]
+
 MARKER_RADIUS_PX = 7
 FOCUS_MARKER_RADIUS_PX = 10
 

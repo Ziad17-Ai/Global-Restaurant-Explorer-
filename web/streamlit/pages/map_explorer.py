@@ -10,7 +10,6 @@ from web.streamlit.api_client import (
     APIError,
     MapPointsResponse,
     RestaurantItem,
-    get_api_client,
 )
 from web.streamlit.components.feedback import (
     render_api_error,
@@ -24,6 +23,7 @@ from web.streamlit.components.state import (
     load_cities,
     load_countries,
     load_cuisines,
+    load_map_points,
     load_pipeline_status,
 )
 from web.streamlit.constants import (
@@ -194,10 +194,10 @@ min_rating_param = None if min_rating <= MIN_RATING else min_rating
 map_resp: MapPointsResponse | None = None
 try:
     with st.spinner("Loading spatial map points..."):
-        map_resp = get_api_client().get_map_points(
+        map_resp = load_map_points(
             country=country_param,
             city=city_param,
-            cuisine=selected_cuisines or None,
+            cuisine=tuple(selected_cuisines),
             min_rating=min_rating_param,
             price_range=price_param,
             latitude=float(center_lat) if use_radius else None,

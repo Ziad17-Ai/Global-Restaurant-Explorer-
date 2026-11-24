@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Generator
 from typing import Protocol
 
@@ -13,6 +14,16 @@ from web.backend.exceptions import ServiceUnavailableError
 from web.backend.settings import BackendSettings, settings
 
 logger = logging.getLogger(__name__)
+
+_LOCAL_MYSQL_COOLDOWN_SECONDS = 60.0
+_LOCAL_PROBE_TIMEOUT_SECONDS = 2
+_mysql_unavailable_until: float = 0.0
+
+
+def reset_mysql_fallback_cooldown() -> None:
+    """Reset the local MySQL unavailability cooldown (used in tests)."""
+    global _mysql_unavailable_until
+    _mysql_unavailable_until = 0.0
 
 
 class DictCursorConnection(Protocol):
@@ -32,6 +43,9 @@ def open_mysql_connection(app_settings: BackendSettings) -> DictCursorConnection
     ssl_params: dict[str, object] | None = (
         {"ssl_mode": "REQUIRED"} if app_settings.mysql_tls_enabled else None
     )
+    timeout = app_settings.database_connect_timeout_seconds
+    if can_use_csv_fallback(app_settings):
+        timeout = min(timeout, _LOCAL_PROBE_TIMEOUT_SECONDS)
     conn: DictCursorConnection = pymysql.connect(
         host=app_settings.mysql_host,
         port=app_settings.mysql_port,
@@ -40,7 +54,7 @@ def open_mysql_connection(app_settings: BackendSettings) -> DictCursorConnection
         database=app_settings.mysql_database,
         charset="utf8mb4",
         cursorclass=DictCursor,
-        connect_timeout=app_settings.database_connect_timeout_seconds,
+        connect_timeout=timeout,
         read_timeout=app_settings.database_connect_timeout_seconds,
         write_timeout=app_settings.database_connect_timeout_seconds,
         autocommit=True,
@@ -59,11 +73,17 @@ def can_use_csv_fallback(app_settings: BackendSettings) -> bool:
 
 def get_db_connection() -> Generator[DictCursorConnection | None, None, None]:
     """Yield one PyMySQL connection per request, or None for local CSV fallback."""
+    global _mysql_unavailable_until
+    if can_use_csv_fallback(settings) and time.monotonic() < _mysql_unavailable_until:
+        yield None
+        return
+
     conn: DictCursorConnection | None = None
     try:
         conn = open_mysql_connection(settings)
     except (pymysql.MySQLError, OSError) as exc:
         if can_use_csv_fallback(settings):
+            _mysql_unavailable_until = time.monotonic() + _LOCAL_MYSQL_COOLDOWN_SECONDS
             logger.warning(
                 "MySQL unavailable in local mode; falling back to local CSV snapshot",
                 extra={"details": type(exc).__name__},

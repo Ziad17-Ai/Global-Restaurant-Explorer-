@@ -63,7 +63,7 @@ class StreamlitSettings(BaseSettings):
         case_sensitive=False,
     )
 
-    streamlit_backend_url: str = Field(default="http://localhost:8000")
+    streamlit_backend_url: str = Field(default="http://127.0.0.1:8000")
     streamlit_api_timeout_seconds: int = Field(
         default=DEFAULT_API_TIMEOUT_SECONDS, ge=1
     )

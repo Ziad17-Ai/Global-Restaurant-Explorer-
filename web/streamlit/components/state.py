@@ -10,9 +10,11 @@ from web.streamlit.api_client import (
     CountriesResponse,
     CuisinesResponse,
     DestinationProfile,
+    MapPointsResponse,
     PipelineStatus,
     RestaurantDetailResponse,
     RestaurantItem,
+    RestaurantListResponse,
     get_api_client,
 )
 from web.streamlit.constants import MAX_COMPARE_ITEMS, MAX_JOURNEY_STOPS
@@ -132,3 +134,65 @@ def load_pipeline_status() -> PipelineStatus:
 def load_restaurant_detail(restaurant_id: int) -> RestaurantDetailResponse:
     """Load cached restaurant detail, nearby, and similar records."""
     return get_api_client().get_restaurant(restaurant_id)
+
+
+@st.cache_data(ttl=settings.streamlit_cache_ttl_seconds, show_spinner=False)
+def load_restaurants(
+    *,
+    country: str | None = None,
+    city: str | None = None,
+    locality: str | None = None,
+    cuisine: tuple[str, ...] = (),
+    min_rating: float | None = None,
+    max_cost_usd: float | None = None,
+    price_range: int | None = None,
+    has_online_delivery: bool | None = None,
+    has_table_booking: bool | None = None,
+    search_query: str | None = None,
+    sort_by: str = "rating",
+    limit: int = 20,
+    offset: int = 0,
+) -> RestaurantListResponse:
+    """Load cached paginated restaurants for a filter signature."""
+    return get_api_client().list_restaurants(
+        country=country,
+        city=city,
+        locality=locality,
+        cuisine=list(cuisine) if cuisine else None,
+        min_rating=min_rating,
+        max_cost_usd=max_cost_usd,
+        price_range=price_range,
+        has_online_delivery=has_online_delivery,
+        has_table_booking=has_table_booking,
+        search_query=search_query,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@st.cache_data(ttl=settings.streamlit_cache_ttl_seconds, show_spinner=False)
+def load_map_points(
+    *,
+    country: str | None = None,
+    city: str | None = None,
+    cuisine: tuple[str, ...] = (),
+    min_rating: float | None = None,
+    price_range: int | None = None,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    radius_m: float | None = None,
+    limit: int = 500,
+) -> MapPointsResponse:
+    """Load cached geolocated map points for a spatial filter signature."""
+    return get_api_client().get_map_points(
+        country=country,
+        city=city,
+        cuisine=list(cuisine) if cuisine else None,
+        min_rating=min_rating,
+        price_range=price_range,
+        latitude=latitude,
+        longitude=longitude,
+        radius_m=radius_m,
+        limit=limit,
+    )

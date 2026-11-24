@@ -489,3 +489,37 @@ def test_api_client_error_mapping() -> None:
     with pytest.raises(APIError) as err_422:
         client.list_restaurants()
     assert err_422.value.status_code == 422
+
+
+def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
+    """Verify CARTO GL style URLs are absolute HTTPS URLs and colors adapt by theme."""
+    from web.streamlit.components.maps_and_charts import build_map_points_df
+    from web.streamlit.constants import (
+        BASEMAP_DARK,
+        BASEMAP_LIGHT,
+        COLOR_DARK_HIGH_RATING,
+        COLOR_HIGH_RATING,
+    )
+
+    assert BASEMAP_LIGHT.startswith("https://")
+    assert BASEMAP_LIGHT.endswith(".json")
+    assert BASEMAP_DARK.startswith("https://")
+    assert BASEMAP_DARK.endswith(".json")
+
+    sample_points: list[MapPointItem] = [
+        {
+            "restaurant_id": 1,
+            "name": "Nile Bistro",
+            "latitude": 30.0626,
+            "longitude": 31.2211,
+            "rating": 4.5,
+            "rating_text": "Very Good",
+            "city_name": "Cairo",
+            "country_name": "Egypt",
+        }
+    ]
+    light_df = build_map_points_df(sample_points, dark_mode=False)
+    dark_df = build_map_points_df(sample_points, dark_mode=True)
+    assert light_df.iloc[0]["marker_color"] == COLOR_HIGH_RATING
+    assert dark_df.iloc[0]["marker_color"] == COLOR_DARK_HIGH_RATING
+    assert COLOR_HIGH_RATING != COLOR_DARK_HIGH_RATING

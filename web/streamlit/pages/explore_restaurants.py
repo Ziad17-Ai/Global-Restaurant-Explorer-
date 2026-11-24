@@ -9,7 +9,6 @@ from web.streamlit.api_client import (
     APIError,
     RestaurantItem,
     RestaurantListResponse,
-    get_api_client,
 )
 from web.streamlit.components.feedback import (
     render_api_error,
@@ -31,6 +30,7 @@ from web.streamlit.components.state import (
     load_cuisines,
     load_pipeline_status,
     load_restaurant_detail,
+    load_restaurants,
 )
 from web.streamlit.constants import (
     COST_USD_STEP,
@@ -175,11 +175,11 @@ max_cost_param = None if max_cost_usd <= 0.0 else float(max_cost_usd)
 list_resp: RestaurantListResponse | None = None
 try:
     with st.spinner("Loading matching restaurants..."):
-        list_resp = get_api_client().list_restaurants(
+        list_resp = load_restaurants(
             country=country_param,
             city=city_param,
             locality=locality_query.strip() or None,
-            cuisine=selected_cuisines or None,
+            cuisine=tuple(selected_cuisines),
             min_rating=min_rating_param,
             max_cost_usd=max_cost_param,
             price_range=price_param,
