@@ -1,0 +1,234 @@
+"""Unit tests for constrained NLP adapters, caching, vocabulary check, and fallback."""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from tests.backend.conftest import SAMPLE_CUISINE_MAP_CSV
+from web.backend.constants import QUERY_LOG_MAX_CHARS
+from web.backend.repositories.meta_repository import VocabularySnapshot
+from web.backend.schemas.nlp import NLSearchRequest, SearchParams
+from web.backend.services.nlp_adapter import (
+    HuggingFaceAdapter,
+    NLPProviderError,
+    RuleBasedParser,
+    load_cuisine_synonyms,
+    validate_against_vocabulary,
+)
+from web.backend.services.rate_limiter import SlidingWindowRateLimiter
+from web.backend.services.search_service import SearchService
+from web.backend.settings import BackendSettings
+
+
+def test_search_params_forbids_extra_fields() -> None:
+    with pytest.raises(ValidationError):
+        SearchParams(city="London", raw_sql="SELECT * FROM restaurants")  # type: ignore[call-arg]
+
+
+def test_rule_based_parser_extracts_filters_and_synonyms(
+    sample_vocabulary: VocabularySnapshot,
+    tmp_path: Path,
+) -> None:
+    map_path = tmp_path / "cuisine_map.csv"
+    map_path.write_text(SAMPLE_CUISINE_MAP_CSV, encoding="utf-8")
+    synonyms = load_cuisine_synonyms(map_path)
+
+    parser = RuleBasedParser(sample_vocabulary, cuisine_synonyms=synonyms)
+    parsed = parser.parse(
+        "Affordable Italian in New Delhi with rating above 4.2 "
+        "under 1500 and online delivery"
+    )
+
+    assert parsed.city == "New Delhi"
+    assert parsed.cuisine == ["Italian"]
+    assert parsed.min_rating == 4.2
+    assert parsed.max_cost_for_two == 1500.0
+    assert parsed.price_range == 2
+    assert parsed.has_online_delivery is True
+    assert parsed.needs_clarification is None
+
+
+def test_rule_based_parser_handles_aliases_usd_and_clarification(
+    sample_vocabulary: VocabularySnapshot,
+) -> None:
+    parser = RuleBasedParser(sample_vocabulary, cuisine_synonyms={"malay": "Malaysian"})
+
+    uk_parsed = parser.parse("Malay food in UK under $40 with table booking")
+    assert uk_parsed.country == "United Kingdom"
+    assert uk_parsed.cuisine == ["Malaysian"]
+    assert uk_parsed.max_cost_usd == 40.0
+    assert uk_parsed.has_table_booking is True
+
+    unclear = parser.parse("hello world xyz123")
+    assert unclear.needs_clarification is not None
+
+
+def test_huggingface_adapter_validates_vocabulary_strips_think_and_caches(
+    sample_vocabulary: VocabularySnapshot,
+    test_settings: BackendSettings,
+) -> None:
+    calls: list[str] = []
+    now = [100.0]
+
+    def fake_completion(
+        *,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+    ) -> str:
+        calls.append(messages[-1]["content"])
+        assert temperature == 0.0
+        assert max_tokens <= 256
+        return "<think>reasoning</think>\n" + json.dumps(
+            {
+                "country": "india",
+                "city": "new delhi",
+                "locality": "connaught place",
+                "cuisine": ["italian", "MartianFood"],
+                "cuisine_group": None,
+                "min_rating": 4.2,
+                "min_cost_for_two": None,
+                "max_cost_for_two": 1500,
+                "max_cost_usd": None,
+                "price_range": None,
+                "has_online_delivery": True,
+                "has_table_booking": None,
+                "search_query": None,
+                "needs_clarification": None,
+            }
+        )
+
+    configured_settings = test_settings.model_copy(
+        update={
+            "nlp_cache_ttl_seconds": 60,
+            "nlp_cache_max_entries": 2,
+        }
+    )
+    adapter = HuggingFaceAdapter(
+        vocabulary=sample_vocabulary,
+        app_settings=configured_settings,
+        completion_fn=fake_completion,
+        clock=lambda: now[0],
+    )
+
+    first = adapter.parse("Italian in New Delhi above 4.2")
+    assert first.country == "India"
+    assert first.city == "New Delhi"
+    assert first.locality == "Connaught Place"
+    assert first.cuisine == ["Italian"]
+    assert len(calls) == 1
+
+    # Cache hit
+    second = adapter.parse("  italian in new delhi above 4.2  ")
+    assert second == first
+    assert len(calls) == 1
+
+    # Cache expires after TTL
+    now[0] = 200.0
+    adapter.parse("Italian in New Delhi above 4.2")
+    assert len(calls) == 2
+
+
+def test_huggingface_adapter_rejects_bad_outputs(
+    sample_vocabulary: VocabularySnapshot,
+    test_settings: BackendSettings,
+) -> None:
+    def raise_timeout(**_kwargs: object) -> str:
+        raise TimeoutError("timed out")
+
+    timeout_adapter = HuggingFaceAdapter(
+        vocabulary=sample_vocabulary,
+        app_settings=test_settings,
+        completion_fn=raise_timeout,
+    )
+    with pytest.raises(NLPProviderError):
+        timeout_adapter.parse("Italian in New Delhi")
+
+    def extra_key_output(**_kwargs: object) -> str:
+        return json.dumps({"city": "London", "unexpected_sql": "DROP TABLE"})
+
+    extra_adapter = HuggingFaceAdapter(
+        vocabulary=sample_vocabulary,
+        app_settings=test_settings,
+        completion_fn=extra_key_output,
+    )
+    with pytest.raises(NLPProviderError):
+        extra_adapter.parse("Food in London")
+
+    def bad_json_output(**_kwargs: object) -> str:
+        return "not json at all"
+
+    bad_adapter = HuggingFaceAdapter(
+        vocabulary=sample_vocabulary,
+        app_settings=test_settings,
+        completion_fn=bad_json_output,
+    )
+    with pytest.raises(NLPProviderError):
+        bad_adapter.parse("Food in London")
+
+
+def test_validate_against_vocabulary_drops_unknowns(
+    sample_vocabulary: VocabularySnapshot,
+) -> None:
+    raw = SearchParams(
+        country="Atlantis",
+        city="london",
+        cuisine=["British", "UnknownCuisine"],
+    )
+    cleaned = validate_against_vocabulary(raw, sample_vocabulary)
+    assert cleaned.country is None
+    assert cleaned.city == "London"
+    assert cleaned.cuisine == ["British"]
+
+
+def test_search_service_falls_back_and_truncates_logged_query(
+    sample_vocabulary: VocabularySnapshot,
+    test_settings: BackendSettings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from web.backend.repositories.meta_repository import MetaRepository
+    from web.backend.repositories.restaurant_repository import RestaurantRepository
+
+    def failing_completion(**_kwargs: object) -> str:
+        raise TimeoutError("HF timed out")
+
+    hf_adapter = HuggingFaceAdapter(
+        vocabulary=sample_vocabulary,
+        app_settings=test_settings,
+        completion_fn=failing_completion,
+    )
+    rule_adapter = RuleBasedParser(vocabulary=sample_vocabulary)
+    service = SearchService(
+        restaurant_repository=RestaurantRepository(None, test_settings),
+        meta_repository=MetaRepository(None, test_settings),
+        rate_limiter=SlidingWindowRateLimiter(max_requests=30),
+        app_settings=test_settings,
+        primary_adapter=hf_adapter,
+        fallback_adapter=rule_adapter,
+    )
+
+    long_query = "Italian in New Delhi above 4.2 " + ("x" * 350)
+    assert len(long_query) <= 500
+
+    with caplog.at_level(logging.INFO, logger="web.backend.services.search_service"):
+        response = service.search_natural_language(
+            NLSearchRequest(query=long_query, limit=10, offset=0),
+            client_key="127.0.0.1",
+        )
+
+    assert response.parser_used == "rule_based"
+    assert response.fallback_used is True
+    assert response.total == 1
+    assert response.items[0].name == "Pasta Palace"
+
+    info_records = [rec for rec in caplog.records if hasattr(rec, "query_preview")]
+    assert info_records
+    logged_preview = info_records[-1].query_preview
+    assert len(logged_preview) == QUERY_LOG_MAX_CHARS
+    assert logged_preview == long_query[:QUERY_LOG_MAX_CHARS]
