@@ -69,7 +69,52 @@ UNKNOWN_SOURCE_LABEL = "Dataset source"
 UNKNOWN_LICENSE_LABEL = "License unspecified"
 
 BASEMAP_LIGHT = "open-street-map"
-BASEMAP_DARK = "open-street-map"
+BASEMAP_DARK = "carto-darkmatter"
+MAP_VIEW_LABELS: dict[str, str] = {
+    "standard": "Standard (OSM)",
+    "terrain": "Terrain",
+    "satellite": "Satellite",
+    "topographic": "Topographic",
+    "dark": "Dark",
+}
+MAP_VIEW_STYLES: dict[str, dict[str, object]] = {
+    "standard": {
+        "style": "open-street-map",
+        "tile_url": None,
+        "attribution": "OpenStreetMap contributors",
+        "is_dark_basemap": False,
+    },
+    "terrain": {
+        "style": "white-bg",
+        "tile_url": "https://tile.opentopomap.org/{z}/{x}/{y}.png",
+        "attribution": "OpenTopoMap (CC-BY-SA) · OpenStreetMap contributors",
+        "is_dark_basemap": False,
+    },
+    "satellite": {
+        "style": "white-bg",
+        "tile_url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "attribution": "Esri World Imagery",
+        "is_dark_basemap": True,
+    },
+    "topographic": {
+        "style": "white-bg",
+        "tile_url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "World_Topo_Map/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "attribution": "Esri World Topographic Map",
+        "is_dark_basemap": False,
+    },
+    "dark": {
+        "style": "carto-darkmatter",
+        "tile_url": None,
+        "attribution": "CARTO · OpenStreetMap contributors",
+        "is_dark_basemap": True,
+    },
+}
 CHART_HEIGHT_PX = 360
 MAP_HEIGHT_PX = 480
 DEFAULT_MAP_CENTER_LAT = 26.0

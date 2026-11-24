@@ -492,20 +492,40 @@ def test_api_client_error_mapping() -> None:
 
 
 def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
-    """Verify OpenStreetMap basemap config and theme-adapted marker colors."""
+    """Verify selectable map views (OSM, Terrain, Satellite, Topo, Dark) and colors."""
     from web.streamlit.components.maps_and_charts import (
+        build_map_layers,
         build_map_points_df,
+        get_active_basemap,
+        get_map_view_spec,
         get_rating_color_map,
     )
     from web.streamlit.constants import (
-        BASEMAP_DARK,
-        BASEMAP_LIGHT,
         COLOR_DARK_HIGH_RATING,
         COLOR_HIGH_RATING,
+        MAP_VIEW_LABELS,
     )
 
-    assert BASEMAP_LIGHT == "open-street-map"
-    assert BASEMAP_DARK == "open-street-map"
+    assert set(MAP_VIEW_LABELS.keys()) == {
+        "standard",
+        "terrain",
+        "satellite",
+        "topographic",
+        "dark",
+    }
+    assert get_active_basemap("standard") == "open-street-map"
+    assert build_map_layers("standard") == []
+    assert get_active_basemap("dark") == "carto-darkmatter"
+
+    for raster_view in ("terrain", "satellite", "topographic"):
+        assert get_active_basemap(raster_view) == "white-bg"
+        layers = build_map_layers(raster_view)
+        assert len(layers) == 1
+        assert layers[0]["sourcetype"] == "raster"
+        assert str(layers[0]["source"][0]).startswith("https://")  # type: ignore[index]
+
+    assert get_map_view_spec("satellite")["is_dark_basemap"] is True
+    assert get_map_view_spec("terrain")["is_dark_basemap"] is False
 
     sample_points: list[MapPointItem] = [
         {

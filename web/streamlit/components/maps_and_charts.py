@@ -18,8 +18,6 @@ from web.streamlit.components.formatters import (
     is_valid_coordinate,
 )
 from web.streamlit.constants import (
-    BASEMAP_DARK,
-    BASEMAP_LIGHT,
     CHART_HEIGHT_PX,
     CITY_MAP_ZOOM,
     COLOR_BORDER_DARK,
@@ -46,6 +44,8 @@ from web.streamlit.constants import (
     DETAIL_MAP_ZOOM,
     FOCUS_MARKER_SIZE_PX,
     MAP_HEIGHT_PX,
+    MAP_VIEW_LABELS,
+    MAP_VIEW_STYLES,
     MARKER_SIZE_PX,
     RATING_TIER_HIGH,
     RATING_TIER_MID,
@@ -63,9 +63,54 @@ def is_dark_theme() -> bool:
     return theme_type == "dark"
 
 
-def get_active_basemap() -> str:
-    """Return the OpenStreetMap basemap style for Plotly Scattermap."""
-    return BASEMAP_DARK if is_dark_theme() else BASEMAP_LIGHT
+def get_active_basemap(map_view: str | None = None) -> str:
+    """Return the Plotly `layout.map.style` value for the selected map view."""
+    spec = get_map_view_spec(map_view)
+    return str(spec["style"])
+
+
+def get_default_map_view(*, dark_mode: bool | None = None) -> str:
+    """Return the default map view key for the active Streamlit theme."""
+    is_dark = is_dark_theme() if dark_mode is None else dark_mode
+    return "dark" if is_dark else "standard"
+
+
+def get_map_view_spec(map_view: str | None = None) -> dict[str, object]:
+    """Resolve a map view key to its style, optional raster tile URL, and metadata."""
+    resolved = map_view if map_view in MAP_VIEW_STYLES else get_default_map_view()
+    return MAP_VIEW_STYLES[resolved]
+
+
+def build_map_layers(map_view: str | None = None) -> list[dict[str, object]]:
+    """Return Plotly MapLibre raster tile layers when the view uses custom tiles."""
+    spec = get_map_view_spec(map_view)
+    tile_url = spec.get("tile_url")
+    if not isinstance(tile_url, str) or not tile_url:
+        return []
+    return [
+        {
+            "below": "traces",
+            "sourcetype": "raster",
+            "source": [tile_url],
+            "sourceattribution": str(spec["attribution"]),
+        }
+    ]
+
+
+def _select_map_view(*, key: str, dark_mode: bool) -> str:
+    """Render an inline selector for Standard, Terrain, Satellite, Topo, and Dark."""
+    default_view = get_default_map_view(dark_mode=dark_mode)
+    selected = st.segmented_control(
+        "Map view",
+        options=list(MAP_VIEW_LABELS.keys()),
+        format_func=lambda view_key: MAP_VIEW_LABELS[view_key],
+        default=default_view,
+        key=f"{key}_map_view",
+        width="content",
+    )
+    if selected not in MAP_VIEW_STYLES:
+        return default_view
+    return str(selected)
 
 
 def get_rating_color_map(*, dark_mode: bool) -> dict[str, str]:
@@ -152,17 +197,23 @@ def _apply_map_chrome(
     zoom: int,
     height: int,
     dark_mode: bool,
+    map_view: str,
 ) -> None:
-    """Apply OpenStreetMap layout and Paper & Ink / Warm Ink chrome to a figure."""
+    """Apply selected basemap style/layers and Paper & Ink / Warm Ink chrome."""
     surface = COLOR_SURFACE_DARK if dark_mode else COLOR_SURFACE_LIGHT
     text_color = COLOR_TEXT_DARK if dark_mode else COLOR_TEXT_LIGHT
     border_color = COLOR_BORDER_DARK if dark_mode else COLOR_BORDER_LIGHT
+    map_config: dict[str, object] = {
+        "style": get_active_basemap(map_view),
+        "center": {"lat": center_lat, "lon": center_lon},
+        "zoom": zoom,
+    }
+    layers = build_map_layers(map_view)
+    if layers:
+        map_config["layers"] = layers
+
     fig.update_layout(
-        map={
-            "style": get_active_basemap(),
-            "center": {"lat": center_lat, "lon": center_lon},
-            "zoom": zoom,
-        },
+        map=map_config,
         height=height,
         margin={"l": 0, "r": 0, "t": 8, "b": 0},
         paper_bgcolor=surface,
@@ -194,11 +245,10 @@ def render_restaurant_map(
     height: int = MAP_HEIGHT_PX,
     focus_point: tuple[float, float, str] | None = None,
 ) -> None:
-    """Render an OpenStreetMap restaurant map paired with a dataframe equivalent."""
+    """Render a selectable-basemap restaurant map paired with a dataframe equivalent."""
     dark_mode = is_dark_theme()
-    focus_color = COLOR_DARK_FOCUS if dark_mode else COLOR_FOCUS
-    points_df = build_map_points_df(items, dark_mode=dark_mode)
-    if points_df.empty:
+    preview_df = build_map_points_df(items, dark_mode=dark_mode)
+    if preview_df.empty:
         st.info(
             "No restaurants with valid coordinates match the current view.",
             title="Map view unavailable",
@@ -209,6 +259,16 @@ def render_restaurant_map(
     map_tab, table_tab = st.tabs(["Map view", "Data table"])
 
     with map_tab:
+        map_view = _select_map_view(key=key, dark_mode=dark_mode)
+        view_spec = get_map_view_spec(map_view)
+        use_dark_markers = dark_mode or bool(view_spec["is_dark_basemap"])
+        focus_color = COLOR_DARK_FOCUS if use_dark_markers else COLOR_FOCUS
+        points_df = (
+            build_map_points_df(items, dark_mode=True)
+            if use_dark_markers and not dark_mode
+            else preview_df
+        )
+
         if focus_point is not None:
             center_lat, center_lon, focus_name = focus_point
             zoom = DETAIL_MAP_ZOOM
@@ -231,7 +291,7 @@ def render_restaurant_map(
             lat="latitude",
             lon="longitude",
             color="rating_tier",
-            color_discrete_map=get_rating_color_map(dark_mode=dark_mode),
+            color_discrete_map=get_rating_color_map(dark_mode=use_dark_markers),
             category_orders={"rating_tier": list(RATING_TIER_ORDER)},
             hover_name="name",
             hover_data={
@@ -253,7 +313,7 @@ def render_restaurant_map(
             },
             zoom=zoom,
             center={"lat": center_lat, "lon": center_lon},
-            map_style=get_active_basemap(),
+            map_style=get_active_basemap(map_view),
             height=height,
         )
         fig.update_traces(marker={"size": MARKER_SIZE_PX, "opacity": 0.92})
@@ -278,6 +338,7 @@ def render_restaurant_map(
             zoom=zoom,
             height=height,
             dark_mode=dark_mode,
+            map_view=map_view,
         )
         st.plotly_chart(
             fig,
@@ -288,7 +349,7 @@ def render_restaurant_map(
             alt=alt_text,
         )
         st.caption(
-            "Basemap: OpenStreetMap contributors · Click a rating tier in the legend "
+            f"Basemap: {view_spec['attribution']} · Click a rating tier in the legend "
             "above to toggle markers."
         )
 
@@ -350,13 +411,22 @@ def render_journey_route_map(
     map_tab, table_tab = st.tabs(["Route map", "Leg breakdown table"])
 
     with map_tab:
+        map_view = _select_map_view(key=key, dark_mode=dark_mode)
+        view_spec = get_map_view_spec(map_view)
+        use_dark_markers = dark_mode or bool(view_spec["is_dark_basemap"])
+        route_color = COLOR_DARK_ROUTE_PATH if use_dark_markers else COLOR_ROUTE_PATH
+        route_points_df = (
+            build_map_points_df(stops, dark_mode=True)
+            if use_dark_markers and not dark_mode
+            else points_df
+        )
         fig = go.Figure()
         min_route_points = 2
-        if len(points_df) >= min_route_points:
+        if len(route_points_df) >= min_route_points:
             fig.add_trace(
                 go.Scattermap(
-                    lat=points_df["latitude"].tolist(),
-                    lon=points_df["longitude"].tolist(),
+                    lat=route_points_df["latitude"].tolist(),
+                    lon=route_points_df["longitude"].tolist(),
                     mode="lines",
                     name="Planned route",
                     line={"width": 3, "color": route_color},
@@ -366,21 +436,21 @@ def render_journey_route_map(
 
         stop_labels = [
             f"{idx}. {row['name']} ({row['rating_display']} · {row['cost_display']})"
-            for idx, (_, row) in enumerate(points_df.iterrows(), start=1)
+            for idx, (_, row) in enumerate(route_points_df.iterrows(), start=1)
         ]
         fig.add_trace(
             go.Scattermap(
-                lat=points_df["latitude"].tolist(),
-                lon=points_df["longitude"].tolist(),
+                lat=route_points_df["latitude"].tolist(),
+                lon=route_points_df["longitude"].tolist(),
                 mode="markers+text",
                 name="Itinerary stops",
-                text=[str(idx) for idx in range(1, len(points_df) + 1)],
+                text=[str(idx) for idx in range(1, len(route_points_df) + 1)],
                 textposition="top right",
                 hovertext=stop_labels,
                 hoverinfo="text",
                 marker={
                     "size": FOCUS_MARKER_SIZE_PX,
-                    "color": points_df["marker_color"].tolist(),
+                    "color": route_points_df["marker_color"].tolist(),
                     "opacity": 0.95,
                 },
             )
@@ -388,11 +458,12 @@ def render_journey_route_map(
 
         _apply_map_chrome(
             fig,
-            center_lat=float(points_df["latitude"].mean()),
-            center_lon=float(points_df["longitude"].mean()),
+            center_lat=float(route_points_df["latitude"].mean()),
+            center_lon=float(route_points_df["longitude"].mean()),
             zoom=CITY_MAP_ZOOM,
             height=MAP_HEIGHT_PX,
             dark_mode=dark_mode,
+            map_view=map_view,
         )
         st.plotly_chart(
             fig,
@@ -402,7 +473,9 @@ def render_journey_route_map(
             config={"scrollZoom": True, "displayModeBar": True},
             alt="Planned restaurant journey route map",
         )
-        st.caption("Basemap: OpenStreetMap contributors · Straight-line route preview.")
+        st.caption(
+            f"Basemap: {view_spec['attribution']} · Straight-line route preview."
+        )
 
     with table_tab:
         st.dataframe(
