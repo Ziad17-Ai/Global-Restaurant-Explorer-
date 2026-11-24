@@ -6,7 +6,8 @@ from collections.abc import Sequence
 
 import altair as alt
 import pandas as pd
-import pydeck as pdk
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from web.streamlit.api_client import MapPointItem, RestaurantItem
@@ -21,6 +22,8 @@ from web.streamlit.constants import (
     BASEMAP_LIGHT,
     CHART_HEIGHT_PX,
     CITY_MAP_ZOOM,
+    COLOR_BORDER_DARK,
+    COLOR_BORDER_LIGHT,
     COLOR_DARK_FOCUS,
     COLOR_DARK_HIGH_RATING,
     COLOR_DARK_LOW_RATING,
@@ -32,18 +35,21 @@ from web.streamlit.constants import (
     COLOR_LOW_RATING,
     COLOR_MID_RATING,
     COLOR_ROUTE_PATH,
-    COLOR_STROKE_DARK,
-    COLOR_STROKE_LIGHT,
+    COLOR_SURFACE_DARK,
+    COLOR_SURFACE_LIGHT,
+    COLOR_TEXT_DARK,
+    COLOR_TEXT_LIGHT,
     COLOR_UNRATED,
     DEFAULT_MAP_CENTER_LAT,
     DEFAULT_MAP_CENTER_LON,
     DEFAULT_MAP_ZOOM,
     DETAIL_MAP_ZOOM,
-    FOCUS_MARKER_RADIUS_PX,
+    FOCUS_MARKER_SIZE_PX,
     MAP_HEIGHT_PX,
-    MARKER_RADIUS_PX,
+    MARKER_SIZE_PX,
     RATING_TIER_HIGH,
     RATING_TIER_MID,
+    RATING_TIER_ORDER,
     UNRATED_LABEL,
 )
 
@@ -58,18 +64,30 @@ def is_dark_theme() -> bool:
 
 
 def get_active_basemap() -> str:
-    """Return a light or dark neutral CARTO GL basemap matching `st.context.theme`."""
+    """Return the OpenStreetMap basemap style for Plotly Scattermap."""
     return BASEMAP_DARK if is_dark_theme() else BASEMAP_LIGHT
 
 
-def _rating_color(rating: float | None, *, dark_mode: bool) -> list[int]:
-    if rating is None:
-        return COLOR_DARK_UNRATED if dark_mode else COLOR_UNRATED
-    if rating >= RATING_TIER_HIGH:
-        return COLOR_DARK_HIGH_RATING if dark_mode else COLOR_HIGH_RATING
-    if rating >= RATING_TIER_MID:
-        return COLOR_DARK_MID_RATING if dark_mode else COLOR_MID_RATING
-    return COLOR_DARK_LOW_RATING if dark_mode else COLOR_LOW_RATING
+def get_rating_color_map(*, dark_mode: bool) -> dict[str, str]:
+    """Return rating-tier hex colors aligned with the active Editorial theme."""
+    if dark_mode:
+        return {
+            "4.0+": COLOR_DARK_HIGH_RATING,
+            "3.0–3.9": COLOR_DARK_MID_RATING,
+            "Below 3.0": COLOR_DARK_LOW_RATING,
+            UNRATED_LABEL: COLOR_DARK_UNRATED,
+        }
+    return {
+        "4.0+": COLOR_HIGH_RATING,
+        "3.0–3.9": COLOR_MID_RATING,
+        "Below 3.0": COLOR_LOW_RATING,
+        UNRATED_LABEL: COLOR_UNRATED,
+    }
+
+
+def _rating_color(rating: float | None, *, dark_mode: bool) -> str:
+    color_map = get_rating_color_map(dark_mode=dark_mode)
+    return color_map[_rating_tier_label(rating)]
 
 
 def _rating_tier_label(rating: float | None) -> str:
@@ -87,7 +105,7 @@ def build_map_points_df(
     *,
     dark_mode: bool = False,
 ) -> pd.DataFrame:
-    """Convert restaurant/map point records into a validated PyDeck DataFrame."""
+    """Convert restaurant/map point records into a validated map DataFrame."""
     rows: list[dict[str, object]] = []
     for item in items:
         lat = item.get("latitude")
@@ -120,10 +138,52 @@ def build_map_points_df(
                     item.get("source_license"),
                 ),
                 "marker_color": _rating_color(rating, dark_mode=dark_mode),
-                "marker_radius": MARKER_RADIUS_PX,
+                "marker_size": MARKER_SIZE_PX,
             }
         )
     return pd.DataFrame(rows)
+
+
+def _apply_map_chrome(
+    fig: go.Figure,
+    *,
+    center_lat: float,
+    center_lon: float,
+    zoom: int,
+    height: int,
+    dark_mode: bool,
+) -> None:
+    """Apply OpenStreetMap layout and Paper & Ink / Warm Ink chrome to a figure."""
+    surface = COLOR_SURFACE_DARK if dark_mode else COLOR_SURFACE_LIGHT
+    text_color = COLOR_TEXT_DARK if dark_mode else COLOR_TEXT_LIGHT
+    border_color = COLOR_BORDER_DARK if dark_mode else COLOR_BORDER_LIGHT
+    fig.update_layout(
+        map={
+            "style": get_active_basemap(),
+            "center": {"lat": center_lat, "lon": center_lon},
+            "zoom": zoom,
+        },
+        height=height,
+        margin={"l": 0, "r": 0, "t": 8, "b": 0},
+        paper_bgcolor=surface,
+        font={"color": text_color},
+        legend={
+            "title": {"text": "Rating tier"},
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.01,
+            "xanchor": "left",
+            "x": 0.0,
+            "bgcolor": surface,
+            "bordercolor": border_color,
+            "borderwidth": 1,
+        },
+        hoverlabel={
+            "bgcolor": surface,
+            "bordercolor": border_color,
+            "font": {"color": text_color},
+        },
+    )
 
 
 def render_restaurant_map(
@@ -134,9 +194,8 @@ def render_restaurant_map(
     height: int = MAP_HEIGHT_PX,
     focus_point: tuple[float, float, str] | None = None,
 ) -> None:
-    """Render a theme-aware restaurant map paired with a dataframe equivalent."""
+    """Render an OpenStreetMap restaurant map paired with a dataframe equivalent."""
     dark_mode = is_dark_theme()
-    stroke_color = COLOR_STROKE_DARK if dark_mode else COLOR_STROKE_LIGHT
     focus_color = COLOR_DARK_FOCUS if dark_mode else COLOR_FOCUS
     points_df = build_map_points_df(items, dark_mode=dark_mode)
     if points_df.empty:
@@ -167,91 +226,71 @@ def render_restaurant_map(
                 zoom = DEFAULT_MAP_ZOOM
             focus_name = ""
 
-        layers: list[pdk.Layer] = [
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=points_df,
-                id=f"{key}_points",
-                get_position=["longitude", "latitude"],
-                get_fill_color="marker_color",
-                get_line_color=stroke_color,
-                get_radius="marker_radius",
-                radius_units="pixels",
-                radius_min_pixels=5,
-                radius_max_pixels=14,
-                stroked=True,
-                line_width_min_pixels=1,
-                pickable=True,
-            )
-        ]
+        fig = px.scatter_map(
+            points_df,
+            lat="latitude",
+            lon="longitude",
+            color="rating_tier",
+            color_discrete_map=get_rating_color_map(dark_mode=dark_mode),
+            category_orders={"rating_tier": list(RATING_TIER_ORDER)},
+            hover_name="name",
+            hover_data={
+                "city_name": True,
+                "country_name": True,
+                "rating_display": True,
+                "cost_display": True,
+                "attribution": True,
+                "latitude": False,
+                "longitude": False,
+                "rating_tier": False,
+            },
+            labels={
+                "city_name": "City",
+                "country_name": "Country",
+                "rating_display": "Rating",
+                "cost_display": "Cost",
+                "attribution": "Source",
+            },
+            zoom=zoom,
+            center={"lat": center_lat, "lon": center_lon},
+            map_style=get_active_basemap(),
+            height=height,
+        )
+        fig.update_traces(marker={"size": MARKER_SIZE_PX, "opacity": 0.92})
 
         if focus_point is not None:
-            focus_df = pd.DataFrame(
-                [
-                    {
-                        "name": focus_name,
-                        "latitude": center_lat,
-                        "longitude": center_lon,
-                        "rating_display": "Focused venue",
-                        "city_name": "",
-                        "country_name": "",
-                        "cost_display": "",
-                        "attribution": "",
-                    }
-                ]
-            )
-            layers.append(
-                pdk.Layer(
-                    "ScatterplotLayer",
-                    data=focus_df,
-                    id=f"{key}_focus",
-                    get_position=["longitude", "latitude"],
-                    get_fill_color=focus_color,
-                    get_radius=FOCUS_MARKER_RADIUS_PX,
-                    radius_units="pixels",
-                    stroked=True,
-                    get_line_color=stroke_color,
-                    line_width_min_pixels=2,
-                    pickable=True,
+            fig.add_trace(
+                go.Scattermap(
+                    lat=[center_lat],
+                    lon=[center_lon],
+                    mode="markers",
+                    name="Focused venue",
+                    text=[focus_name],
+                    hoverinfo="text",
+                    marker={"size": FOCUS_MARKER_SIZE_PX, "color": focus_color},
                 )
             )
 
-        deck = pdk.Deck(
-            layers=layers,
-            initial_view_state=pdk.ViewState(
-                latitude=center_lat,
-                longitude=center_lon,
-                zoom=zoom,
-                pitch=0,
-            ),
-            map_style=get_active_basemap(),
-            tooltip={
-                "text": (
-                    "{name}\n"
-                    "{city_name}, {country_name}\n"
-                    "Rating: {rating_display}\n"
-                    "{cost_display}\n"
-                    "Source: {attribution}"
-                )
-            },
-        )
-        st.pydeck_chart(
-            deck,
-            width="stretch",
+        _apply_map_chrome(
+            fig,
+            center_lat=center_lat,
+            center_lon=center_lon,
+            zoom=zoom,
             height=height,
+            dark_mode=dark_mode,
+        )
+        st.plotly_chart(
+            fig,
+            width="stretch",
+            theme="streamlit",
             key=key,
+            config={"scrollZoom": True, "displayModeBar": True},
             alt=alt_text,
         )
-        if dark_mode:
-            st.caption(
-                "Marker legend: Sage Green = 4.0+, Warm Terracotta = 3.0–3.9, "
-                "Ochre = Below 3.0, Stone Gray = Unrated (no rating in source)."
-            )
-        else:
-            st.caption(
-                "Marker legend: Forest Green = 4.0+, Terracotta = 3.0–3.9, "
-                "Amber = Below 3.0, Slate Gray = Unrated (no rating in source)."
-            )
+        st.caption(
+            "Basemap: OpenStreetMap contributors · Click a rating tier in the legend "
+            "above to toggle markers."
+        )
 
     with table_tab:
         display_columns = [
@@ -296,9 +335,8 @@ def render_journey_route_map(
     *,
     key: str,
 ) -> None:
-    """Render an ordered itinerary map with connecting segments and a leg table."""
+    """Render an ordered OpenStreetMap itinerary map with connecting segments."""
     dark_mode = is_dark_theme()
-    stroke_color = COLOR_STROKE_DARK if dark_mode else COLOR_STROKE_LIGHT
     route_color = COLOR_DARK_ROUTE_PATH if dark_mode else COLOR_ROUTE_PATH
     points_df = build_map_points_df(stops, dark_mode=dark_mode)
     if points_df.empty:
@@ -312,60 +350,59 @@ def render_journey_route_map(
     map_tab, table_tab = st.tabs(["Route map", "Leg breakdown table"])
 
     with map_tab:
-        path_coords = [
-            [float(row["longitude"]), float(row["latitude"])]
-            for _, row in points_df.iterrows()
-        ]
-        layers: list[pdk.Layer] = [
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=points_df,
-                id=f"{key}_stops",
-                get_position=["longitude", "latitude"],
-                get_fill_color="marker_color",
-                get_line_color=stroke_color,
-                get_radius=FOCUS_MARKER_RADIUS_PX,
-                radius_units="pixels",
-                stroked=True,
-                line_width_min_pixels=1,
-                pickable=True,
-            )
-        ]
+        fig = go.Figure()
         min_route_points = 2
-        if len(path_coords) >= min_route_points:
-            path_df = pd.DataFrame([{"name": "Planned route", "path": path_coords}])
-            layers.insert(
-                0,
-                pdk.Layer(
-                    "PathLayer",
-                    data=path_df,
-                    id=f"{key}_path",
-                    get_path="path",
-                    get_color=route_color,
-                    width_scale=1,
-                    width_min_pixels=3,
-                    pickable=False,
-                ),
+        if len(points_df) >= min_route_points:
+            fig.add_trace(
+                go.Scattermap(
+                    lat=points_df["latitude"].tolist(),
+                    lon=points_df["longitude"].tolist(),
+                    mode="lines",
+                    name="Planned route",
+                    line={"width": 3, "color": route_color},
+                    hoverinfo="skip",
+                )
             )
 
-        deck = pdk.Deck(
-            layers=layers,
-            initial_view_state=pdk.ViewState(
-                latitude=float(points_df["latitude"].mean()),
-                longitude=float(points_df["longitude"].mean()),
-                zoom=CITY_MAP_ZOOM,
-                pitch=0,
-            ),
-            map_style=get_active_basemap(),
-            tooltip={"text": "{name}\nRating: {rating_display}\n{cost_display}"},
+        stop_labels = [
+            f"{idx}. {row['name']} ({row['rating_display']} · {row['cost_display']})"
+            for idx, (_, row) in enumerate(points_df.iterrows(), start=1)
+        ]
+        fig.add_trace(
+            go.Scattermap(
+                lat=points_df["latitude"].tolist(),
+                lon=points_df["longitude"].tolist(),
+                mode="markers+text",
+                name="Itinerary stops",
+                text=[str(idx) for idx in range(1, len(points_df) + 1)],
+                textposition="top right",
+                hovertext=stop_labels,
+                hoverinfo="text",
+                marker={
+                    "size": FOCUS_MARKER_SIZE_PX,
+                    "color": points_df["marker_color"].tolist(),
+                    "opacity": 0.95,
+                },
+            )
         )
-        st.pydeck_chart(
-            deck,
-            width="stretch",
+
+        _apply_map_chrome(
+            fig,
+            center_lat=float(points_df["latitude"].mean()),
+            center_lon=float(points_df["longitude"].mean()),
+            zoom=CITY_MAP_ZOOM,
             height=MAP_HEIGHT_PX,
+            dark_mode=dark_mode,
+        )
+        st.plotly_chart(
+            fig,
+            width="stretch",
+            theme="streamlit",
             key=key,
+            config={"scrollZoom": True, "displayModeBar": True},
             alt="Planned restaurant journey route map",
         )
+        st.caption("Basemap: OpenStreetMap contributors · Straight-line route preview.")
 
     with table_tab:
         st.dataframe(

@@ -492,8 +492,11 @@ def test_api_client_error_mapping() -> None:
 
 
 def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
-    """Verify CARTO GL style URLs are absolute HTTPS URLs and colors adapt by theme."""
-    from web.streamlit.components.maps_and_charts import build_map_points_df
+    """Verify OpenStreetMap basemap config and theme-adapted marker colors."""
+    from web.streamlit.components.maps_and_charts import (
+        build_map_points_df,
+        get_rating_color_map,
+    )
     from web.streamlit.constants import (
         BASEMAP_DARK,
         BASEMAP_LIGHT,
@@ -501,10 +504,8 @@ def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
         COLOR_HIGH_RATING,
     )
 
-    assert BASEMAP_LIGHT.startswith("https://")
-    assert BASEMAP_LIGHT.endswith(".json")
-    assert BASEMAP_DARK.startswith("https://")
-    assert BASEMAP_DARK.endswith(".json")
+    assert BASEMAP_LIGHT == "open-street-map"
+    assert BASEMAP_DARK == "open-street-map"
 
     sample_points: list[MapPointItem] = [
         {
@@ -522,4 +523,6 @@ def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
     dark_df = build_map_points_df(sample_points, dark_mode=True)
     assert light_df.iloc[0]["marker_color"] == COLOR_HIGH_RATING
     assert dark_df.iloc[0]["marker_color"] == COLOR_DARK_HIGH_RATING
+    assert get_rating_color_map(dark_mode=False)["4.0+"] == COLOR_HIGH_RATING
+    assert get_rating_color_map(dark_mode=True)["4.0+"] == COLOR_DARK_HIGH_RATING
     assert COLOR_HIGH_RATING != COLOR_DARK_HIGH_RATING
