@@ -160,8 +160,8 @@ HTTP_STATUS_SERVICE_UNAVAILABLE = 503
 HTTP_STATUS_SERVER_ERROR_MIN = 500
 
 NL_EXAMPLE_QUERIES: tuple[str, ...] = (
-    "Top rated Italian in Cairo under $30",
-    "Best Japanese in Dubai with table booking",
+    "Top rated Italian in Mumbai under $30",
+    "Best Indian in Dubai with table booking",
     "Affordable North Indian in New Delhi with online delivery",
     "Fine dining in London rated above 4.5",
 )

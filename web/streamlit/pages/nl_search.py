@@ -93,7 +93,7 @@ with st.form("nl_search_form"):
         "Dining search prompt",
         value=str(st.session_state.get("nl_last_query") or ""),
         max_chars=MAX_NLP_INPUT_CHARS,
-        placeholder="e.g., affordable Italian in Cairo rated above 4",
+        placeholder="e.g., affordable Italian in New Delhi rated above 4",
     )
     submitted = st.form_submit_button(
         "Search with natural language",
