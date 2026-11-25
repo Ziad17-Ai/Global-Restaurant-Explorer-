@@ -297,7 +297,7 @@ class StubAPIClient:
                 "quarantine_rate": 0.0053,
             },
             "is_stale": self._stale,
-            "days_since_last_success": 9 if self._stale else 1,
+            "days_since_last_success": 9.0 if self._stale else 0.01,
             "gold_max_age_days": 7,
             "recent_runs": [
                 {
@@ -473,6 +473,19 @@ def test_api_client_error_mapping() -> None:
 
     assert client.health() == {"status": "ok"}
 
+    fractional_status = api_client._PIPELINE_STATUS_ADAPTER.validate_python(
+        {
+            "latest_run": None,
+            "is_stale": False,
+            "days_since_last_success": 0.01,
+            "gold_max_age_days": 7,
+            "recent_runs": [],
+            "quality_breakdown": [],
+            "data_mode": "local_csv_fallback",
+        }
+    )
+    assert fractional_status["days_since_last_success"] == pytest.approx(0.01)
+
     with pytest.raises(APIError) as err_429:
         client.search_nl("test")
     assert err_429.value.status_code == 429
@@ -492,10 +505,11 @@ def test_api_client_error_mapping() -> None:
 
 
 def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
-    """Verify selectable map views (OSM, Terrain, Satellite, Topo, Dark) and colors."""
+    """Verify native in-map style dropdown views and theme-consistent colors."""
     from web.streamlit.components.maps_and_charts import (
         build_map_layers,
         build_map_points_df,
+        build_map_style_updatemenu,
         get_active_basemap,
         get_map_view_spec,
         get_rating_color_map,
@@ -513,19 +527,39 @@ def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
         "topographic",
         "dark",
     }
-    assert get_active_basemap("standard") == "open-street-map"
-    assert build_map_layers("standard") == []
-    assert get_active_basemap("dark") == "carto-darkmatter"
 
-    for raster_view in ("terrain", "satellite", "topographic"):
-        assert get_active_basemap(raster_view) == "white-bg"
-        layers = build_map_layers(raster_view)
+    for view_key in MAP_VIEW_LABELS:
+        assert get_active_basemap(view_key) == "white-bg"
+        layers = build_map_layers(view_key)
         assert len(layers) == 1
         assert layers[0]["sourcetype"] == "raster"
         assert str(layers[0]["source"][0]).startswith("https://")  # type: ignore[index]
 
     assert get_map_view_spec("satellite")["is_dark_basemap"] is True
+    assert get_map_view_spec("dark")["is_dark_basemap"] is True
     assert get_map_view_spec("terrain")["is_dark_basemap"] is False
+    assert get_map_view_spec("standard")["is_dark_basemap"] is False
+
+    menu = build_map_style_updatemenu(
+        default_view="standard",
+        dark_mode=False,
+        trace_names=("4.0+", "Focused venue"),
+    )
+    assert menu["type"] == "dropdown"
+    assert menu["active"] == 0
+    buttons = menu["buttons"]
+    assert isinstance(buttons, list)
+    assert [btn["label"] for btn in buttons] == list(MAP_VIEW_LABELS.values())
+    for btn in buttons:
+        assert btn["method"] == "update"
+        trace_update, relayout_payload = btn["args"]
+        assert "marker.color" in trace_update
+        assert relayout_payload["map.style"] == "white-bg"
+        assert "map.layers" in relayout_payload
+
+    dark_btn = buttons[-1]
+    assert dark_btn["label"] == "Dark"
+    assert dark_btn["args"][0]["marker.color"][0] == COLOR_DARK_HIGH_RATING
 
     sample_points: list[MapPointItem] = [
         {

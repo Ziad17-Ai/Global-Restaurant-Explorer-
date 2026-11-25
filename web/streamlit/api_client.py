@@ -269,7 +269,7 @@ class PipelineStatus(TypedDict):
 
     latest_run: PipelineRunSummary | None
     is_stale: bool
-    days_since_last_success: int | None
+    days_since_last_success: float | None
     gold_max_age_days: int
     recent_runs: list[PipelineRunSummary]
     quality_breakdown: list[QualityBreakdownItem]

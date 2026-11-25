@@ -79,8 +79,8 @@ MAP_VIEW_LABELS: dict[str, str] = {
 }
 MAP_VIEW_STYLES: dict[str, dict[str, object]] = {
     "standard": {
-        "style": "open-street-map",
-        "tile_url": None,
+        "style": "white-bg",
+        "tile_url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         "attribution": "OpenStreetMap contributors",
         "is_dark_basemap": False,
     },
@@ -109,9 +109,12 @@ MAP_VIEW_STYLES: dict[str, dict[str, object]] = {
         "is_dark_basemap": False,
     },
     "dark": {
-        "style": "carto-darkmatter",
-        "tile_url": None,
-        "attribution": "CARTO · OpenStreetMap contributors",
+        "style": "white-bg",
+        "tile_url": (
+            "https://server.arcgisonline.com/ArcGIS/rest/services/"
+            "Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+        ),
+        "attribution": "Esri Dark Gray Canvas",
         "is_dark_basemap": True,
     },
 }

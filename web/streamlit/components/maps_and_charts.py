@@ -97,20 +97,73 @@ def build_map_layers(map_view: str | None = None) -> list[dict[str, object]]:
     ]
 
 
-def _select_map_view(*, key: str, dark_mode: bool) -> str:
-    """Render an inline selector for Standard, Terrain, Satellite, Topo, and Dark."""
-    default_view = get_default_map_view(dark_mode=dark_mode)
-    selected = st.segmented_control(
-        "Map view",
-        options=list(MAP_VIEW_LABELS.keys()),
-        format_func=lambda view_key: MAP_VIEW_LABELS[view_key],
-        default=default_view,
-        key=f"{key}_map_view",
-        width="content",
-    )
-    if selected not in MAP_VIEW_STYLES:
-        return default_view
-    return str(selected)
+def build_map_style_updatemenu(
+    *,
+    default_view: str,
+    dark_mode: bool,
+    trace_names: Sequence[str] = (),
+) -> dict[str, object]:
+    """Build a native Plotly in-map dropdown to switch basemap styles client-side."""
+    view_keys = list(MAP_VIEW_LABELS.keys())
+    active_index = view_keys.index(default_view) if default_view in view_keys else 0
+    surface = COLOR_SURFACE_DARK if dark_mode else COLOR_SURFACE_LIGHT
+    text_color = COLOR_TEXT_DARK if dark_mode else COLOR_TEXT_LIGHT
+    border_color = COLOR_BORDER_DARK if dark_mode else COLOR_BORDER_LIGHT
+
+    buttons: list[dict[str, object]] = []
+    for view_key in view_keys:
+        view_spec = get_map_view_spec(view_key)
+        use_dark_markers = dark_mode or bool(view_spec["is_dark_basemap"])
+        color_map = get_rating_color_map(dark_mode=use_dark_markers)
+        focus_color = COLOR_DARK_FOCUS if use_dark_markers else COLOR_FOCUS
+        layout_update: dict[str, object] = {
+            "map.style": get_active_basemap(view_key),
+            "map.layers": build_map_layers(view_key),
+        }
+
+        if trace_names and any(
+            name in color_map or name == "Focused venue" for name in trace_names
+        ):
+            marker_colors: list[str | None] = []
+            for trace_name in trace_names:
+                if trace_name in color_map:
+                    marker_colors.append(color_map[trace_name])
+                elif trace_name == "Focused venue":
+                    marker_colors.append(focus_color)
+                else:
+                    marker_colors.append(None)
+            buttons.append(
+                {
+                    "label": MAP_VIEW_LABELS[view_key],
+                    "method": "update",
+                    "args": [{"marker.color": marker_colors}, layout_update],
+                }
+            )
+        else:
+            buttons.append(
+                {
+                    "label": MAP_VIEW_LABELS[view_key],
+                    "method": "relayout",
+                    "args": [layout_update],
+                }
+            )
+
+    return {
+        "type": "dropdown",
+        "direction": "down",
+        "showactive": True,
+        "active": active_index,
+        "x": 0.01,
+        "xanchor": "left",
+        "y": 0.98,
+        "yanchor": "top",
+        "pad": {"r": 6, "t": 6},
+        "bgcolor": surface,
+        "bordercolor": border_color,
+        "borderwidth": 1,
+        "font": {"color": text_color},
+        "buttons": buttons,
+    }
 
 
 def get_rating_color_map(*, dark_mode: bool) -> dict[str, str]:
@@ -212,12 +265,20 @@ def _apply_map_chrome(
     if layers:
         map_config["layers"] = layers
 
+    trace_names = [str(getattr(trace, "name", "")) for trace in fig.data]
     fig.update_layout(
         map=map_config,
         height=height,
         margin={"l": 0, "r": 0, "t": 8, "b": 0},
         paper_bgcolor=surface,
         font={"color": text_color},
+        updatemenus=[
+            build_map_style_updatemenu(
+                default_view=map_view,
+                dark_mode=dark_mode,
+                trace_names=trace_names,
+            )
+        ],
         legend={
             "title": {"text": "Rating tier"},
             "orientation": "h",
@@ -245,10 +306,10 @@ def render_restaurant_map(
     height: int = MAP_HEIGHT_PX,
     focus_point: tuple[float, float, str] | None = None,
 ) -> None:
-    """Render a selectable-basemap restaurant map paired with a dataframe equivalent."""
+    """Render an interactive restaurant map with native basemap switcher and table."""
     dark_mode = is_dark_theme()
-    preview_df = build_map_points_df(items, dark_mode=dark_mode)
-    if preview_df.empty:
+    points_df = build_map_points_df(items, dark_mode=dark_mode)
+    if points_df.empty:
         st.info(
             "No restaurants with valid coordinates match the current view.",
             title="Map view unavailable",
@@ -259,15 +320,8 @@ def render_restaurant_map(
     map_tab, table_tab = st.tabs(["Map view", "Data table"])
 
     with map_tab:
-        map_view = _select_map_view(key=key, dark_mode=dark_mode)
-        view_spec = get_map_view_spec(map_view)
-        use_dark_markers = dark_mode or bool(view_spec["is_dark_basemap"])
-        focus_color = COLOR_DARK_FOCUS if use_dark_markers else COLOR_FOCUS
-        points_df = (
-            build_map_points_df(items, dark_mode=True)
-            if use_dark_markers and not dark_mode
-            else preview_df
-        )
+        map_view = get_default_map_view(dark_mode=dark_mode)
+        focus_color = COLOR_DARK_FOCUS if dark_mode else COLOR_FOCUS
 
         if focus_point is not None:
             center_lat, center_lon, focus_name = focus_point
@@ -291,7 +345,7 @@ def render_restaurant_map(
             lat="latitude",
             lon="longitude",
             color="rating_tier",
-            color_discrete_map=get_rating_color_map(dark_mode=use_dark_markers),
+            color_discrete_map=get_rating_color_map(dark_mode=dark_mode),
             category_orders={"rating_tier": list(RATING_TIER_ORDER)},
             hover_name="name",
             hover_data={
@@ -349,8 +403,9 @@ def render_restaurant_map(
             alt=alt_text,
         )
         st.caption(
-            f"Basemap: {view_spec['attribution']} · Click a rating tier in the legend "
-            "above to toggle markers."
+            "Use the in-map layer dropdown to switch between Standard (OSM), Terrain, "
+            "Satellite, Topographic, and Dark views, or click a rating tier in the "
+            "legend to toggle markers."
         )
 
     with table_tab:
@@ -411,22 +466,14 @@ def render_journey_route_map(
     map_tab, table_tab = st.tabs(["Route map", "Leg breakdown table"])
 
     with map_tab:
-        map_view = _select_map_view(key=key, dark_mode=dark_mode)
-        view_spec = get_map_view_spec(map_view)
-        use_dark_markers = dark_mode or bool(view_spec["is_dark_basemap"])
-        route_color = COLOR_DARK_ROUTE_PATH if use_dark_markers else COLOR_ROUTE_PATH
-        route_points_df = (
-            build_map_points_df(stops, dark_mode=True)
-            if use_dark_markers and not dark_mode
-            else points_df
-        )
+        map_view = get_default_map_view(dark_mode=dark_mode)
         fig = go.Figure()
         min_route_points = 2
-        if len(route_points_df) >= min_route_points:
+        if len(points_df) >= min_route_points:
             fig.add_trace(
                 go.Scattermap(
-                    lat=route_points_df["latitude"].tolist(),
-                    lon=route_points_df["longitude"].tolist(),
+                    lat=points_df["latitude"].tolist(),
+                    lon=points_df["longitude"].tolist(),
                     mode="lines",
                     name="Planned route",
                     line={"width": 3, "color": route_color},
@@ -436,21 +483,21 @@ def render_journey_route_map(
 
         stop_labels = [
             f"{idx}. {row['name']} ({row['rating_display']} · {row['cost_display']})"
-            for idx, (_, row) in enumerate(route_points_df.iterrows(), start=1)
+            for idx, (_, row) in enumerate(points_df.iterrows(), start=1)
         ]
         fig.add_trace(
             go.Scattermap(
-                lat=route_points_df["latitude"].tolist(),
-                lon=route_points_df["longitude"].tolist(),
+                lat=points_df["latitude"].tolist(),
+                lon=points_df["longitude"].tolist(),
                 mode="markers+text",
                 name="Itinerary stops",
-                text=[str(idx) for idx in range(1, len(route_points_df) + 1)],
+                text=[str(idx) for idx in range(1, len(points_df) + 1)],
                 textposition="top right",
                 hovertext=stop_labels,
                 hoverinfo="text",
                 marker={
                     "size": FOCUS_MARKER_SIZE_PX,
-                    "color": route_points_df["marker_color"].tolist(),
+                    "color": points_df["marker_color"].tolist(),
                     "opacity": 0.95,
                 },
             )
@@ -458,8 +505,8 @@ def render_journey_route_map(
 
         _apply_map_chrome(
             fig,
-            center_lat=float(route_points_df["latitude"].mean()),
-            center_lon=float(route_points_df["longitude"].mean()),
+            center_lat=float(points_df["latitude"].mean()),
+            center_lon=float(points_df["longitude"].mean()),
             zoom=CITY_MAP_ZOOM,
             height=MAP_HEIGHT_PX,
             dark_mode=dark_mode,
@@ -474,7 +521,8 @@ def render_journey_route_map(
             alt="Planned restaurant journey route map",
         )
         st.caption(
-            f"Basemap: {view_spec['attribution']} · Straight-line route preview."
+            "Straight-line route preview · Use the in-map layer dropdown to switch "
+            "between Standard (OSM), Terrain, Satellite, Topographic, and Dark views."
         )
 
     with table_tab:
