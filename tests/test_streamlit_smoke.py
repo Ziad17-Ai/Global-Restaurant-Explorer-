@@ -580,3 +580,12 @@ def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
     assert get_rating_color_map(dark_mode=False)["4.0+"] == COLOR_HIGH_RATING
     assert get_rating_color_map(dark_mode=True)["4.0+"] == COLOR_DARK_HIGH_RATING
     assert COLOR_HIGH_RATING != COLOR_DARK_HIGH_RATING
+
+
+def test_streamlit_config_hides_error_links_and_agent_api() -> None:
+    import tomllib
+
+    config_path = REPO_ROOT / "web" / "streamlit" / ".streamlit" / "config.toml"
+    parsed = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    assert parsed["server"]["enableAgentApi"] is False
+    assert parsed["client"]["showErrorLinks"] is False

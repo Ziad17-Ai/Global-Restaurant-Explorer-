@@ -62,3 +62,6 @@ borderColor = "#33302B"
 
 [server]
 enableAgentApi = false
+
+[client]
+showErrorLinks = false
