@@ -219,27 +219,99 @@ class RuleBasedParser:
                 return canonical
         return None
 
+    @staticmethod
+    def _spans_overlap(
+        span: tuple[int, int],
+        occupied_spans: list[tuple[int, int]],
+    ) -> bool:
+        """Return True if candidate [start, end) overlaps any occupied span."""
+        start, end = span
+        return any(
+            start < occ_end and end > occ_start for occ_start, occ_end in occupied_spans
+        )
+
     def _extract_cuisines(self, text_lower: str) -> list[str]:
         """Extract canonical cuisines from vocabulary and known synonyms."""
         found: list[str] = []
         seen: set[str] = set()
+        occupied_spans: list[tuple[int, int]] = []
         for cuisine in sorted(self._vocabulary.cuisines, key=len, reverse=True):
             pattern = rf"(?<!\w){re.escape(cuisine.lower())}(?!\w)"
-            if re.search(pattern, text_lower) and cuisine not in seen:
-                seen.add(cuisine)
-                found.append(cuisine)
+            match = re.search(pattern, text_lower)
+            if match and not self._spans_overlap(match.span(), occupied_spans):
+                occupied_spans.append(match.span())
+                if cuisine not in seen:
+                    seen.add(cuisine)
+                    found.append(cuisine)
         for alias, canonical in sorted(
             self._synonyms.items(), key=lambda pair: len(pair[0]), reverse=True
         ):
             pattern = rf"(?<!\w){re.escape(alias)}(?!\w)"
+            match = re.search(pattern, text_lower)
             if (
-                re.search(pattern, text_lower)
+                match
+                and not self._spans_overlap(match.span(), occupied_spans)
                 and canonical in self._vocabulary.cuisines
-                and canonical not in seen
             ):
-                seen.add(canonical)
-                found.append(canonical)
+                occupied_spans.append(match.span())
+                if canonical not in seen:
+                    seen.add(canonical)
+                    found.append(canonical)
         return found
+
+    def _extract_unmatched_location(
+        self,
+        raw_query: str,
+        text_lower: str,
+    ) -> str | None:
+        """Detect an explicit 'in/near/around <place>' phrase not in vocabulary."""
+        stop_pattern = (
+            r"\b(?:with|without|under|below|max|less|above|over|rated|rating|"
+            r"price|tier|for|and|or|delivers|delivery|booking|reservations?|"
+            r"food|cuisine|cuisines|restaurant|restaurants)\b|\d|\$"
+        )
+        non_location_words = {
+            "budget",
+            "affordable",
+            "moderate",
+            "cheap",
+            "inexpensive",
+            "upscale",
+            "pricey",
+            "expensive",
+            "luxury",
+            "fine",
+            "dining",
+            "style",
+            "mood",
+            "general",
+            "town",
+            "person",
+            "advance",
+            "the",
+            "a",
+            "an",
+            "any",
+            "all",
+            "my",
+        }
+        for match in re.finditer(r"\b(?:in|near|around)\s+([^,;?.!]+)", text_lower):
+            start_offset = match.start(1)
+            fragment_lower = match.group(1)
+            stop_match = re.search(stop_pattern, fragment_lower)
+            end_offset = (
+                start_offset + stop_match.start() if stop_match else match.end(1)
+            )
+            candidate = raw_query[start_offset:end_offset].strip(" \t\r\n.,;:-")
+            if not candidate:
+                continue
+            words = [w.lower() for w in re.findall(r"[a-z]+", candidate)]
+            if not words or all(word in non_location_words for word in words):
+                continue
+            if self._extract_cuisines(candidate.lower()):
+                continue
+            return candidate
+        return None
 
     @staticmethod
     def _extract_rating(text_lower: str) -> float | None:
@@ -351,7 +423,19 @@ class RuleBasedParser:
             has_online_delivery=has_online_delivery,
             has_table_booking=has_table_booking,
         )
-        if not _has_any_filter(params):
+        if country is None and city is None and locality is None:
+            unknown_location = self._extract_unmatched_location(query, text_lower)
+            if unknown_location is not None:
+                params = params.model_copy(
+                    update={
+                        "needs_clarification": (
+                            f"Location '{unknown_location}' was not found in the "
+                            "catalog. Try a supported country or city (e.g., "
+                            "New Delhi, Mumbai, London, Dubai, or Singapore)."
+                        )
+                    }
+                )
+        if not _has_any_filter(params) and params.needs_clarification is None:
             params = params.model_copy(
                 update={
                     "needs_clarification": (

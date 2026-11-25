@@ -358,7 +358,7 @@ SearchParams {
 
 - **Adapter interface:** `parse(query) -> SearchParams`, with a Hugging Face implementation and a rule-based implementation.
 - **Validation:** output checked against the schema and the vocabulary of known countries, cities, localities, and canonical cuisines. Unknown values are dropped or flagged.
-- **Fallback:** on timeout (`[nlp] timeout_seconds`, 5 seconds), error, or invalid output, use the rule-based parser.
+- **Fallback:** on timeout (`[nlp] timeout_seconds`, 5 seconds), error, or invalid output, use the rule-based parser. In the rule-based parser, longer cuisine names take precedence over overlapping shorter ones (e.g., `"North Indian"` vs. `"Indian"`), and unknown explicit `in`/`near`/`around <place>` locations return `needs_clarification` instead of unfiltered results.
 - **Clarification:** ambiguous or unsupported requests return a question for the user.
 - **Cache:** repeated queries reuse parsed results.
 - **Transparency:** the UI shows the interpreted filters.

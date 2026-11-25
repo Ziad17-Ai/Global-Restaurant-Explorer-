@@ -68,6 +68,39 @@ def test_rule_based_parser_handles_aliases_usd_and_clarification(
     assert unclear.needs_clarification is not None
 
 
+def test_rule_based_parser_prevents_cuisine_overlap_and_flags_unknown_location(
+    sample_vocabulary: VocabularySnapshot,
+) -> None:
+    extended_vocab = VocabularySnapshot(
+        countries=sample_vocabulary.countries,
+        cities=sample_vocabulary.cities,
+        localities=sample_vocabulary.localities,
+        cuisines=tuple(
+            dict.fromkeys([*sample_vocabulary.cuisines, "North Indian", "Indian"])
+        ),
+        cuisine_groups=sample_vocabulary.cuisine_groups,
+        cuisine_synonyms=sample_vocabulary.cuisine_synonyms,
+    )
+    parser = RuleBasedParser(extended_vocab)
+
+    north_indian = parser.parse(
+        "Affordable North Indian in New Delhi with online delivery"
+    )
+    assert north_indian.city == "New Delhi"
+    assert north_indian.cuisine == ["North Indian"]
+    assert north_indian.needs_clarification is None
+
+    unknown_city = parser.parse("best sushi in Cairo")
+    assert unknown_city.city is None
+    assert unknown_city.needs_clarification is not None
+    assert "Cairo" in unknown_city.needs_clarification
+
+    unknown_manila = parser.parse("cheap chinese in Manila")
+    assert unknown_manila.city is None
+    assert unknown_manila.needs_clarification is not None
+    assert "Manila" in unknown_manila.needs_clarification
+
+
 def test_huggingface_adapter_validates_vocabulary_strips_think_and_caches(
     sample_vocabulary: VocabularySnapshot,
     test_settings: BackendSettings,
