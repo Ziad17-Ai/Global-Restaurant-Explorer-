@@ -166,6 +166,8 @@ class HFOnnxSemanticMatcher:
             tokenizer.enable_truncation(max_length=_MAX_SEQ_LENGTH)
             tokenizer.enable_padding()
 
+            # Disable ONNX Runtime's pre-allocated CPU memory arena and cap threads
+            # to keep RSS overhead under ~200 MB on Azure B1 / 1 GiB Container Apps.
             sess_options = ort.SessionOptions()
             sess_options.enable_cpu_mem_arena = False
             sess_options.intra_op_num_threads = 2
@@ -183,6 +185,7 @@ class HFOnnxSemanticMatcher:
                     _CUISINE_DESCRIPTORS.get(cuisine, f"{cuisine} restaurant cuisine")
                     for cuisine in self._cuisines
                 ]
+                # Mini-batch vocabulary encoding avoids a single large activation spike.
                 batches = [
                     self._encode(cuisine_texts[i : i + _INIT_BATCH_SIZE])
                     for i in range(0, len(cuisine_texts), _INIT_BATCH_SIZE)
@@ -201,6 +204,15 @@ class HFOnnxSemanticMatcher:
             self._ready = False
 
     def _encode(self, texts: list[str]) -> NDArray[np.float32]:
+        """Encode input texts into L2-normalized mean-pooled embeddings.
+
+        Args:
+            texts: Non-empty batch of strings to embed.
+
+        Returns:
+            Float32 array of shape ``(len(texts), hidden_dim)`` with unit-norm
+            rows so dot products equal cosine similarity.
+        """
         encodings = self._tokenizer.encode_batch(texts)
         input_ids = np.array([enc.ids for enc in encodings], dtype=np.int64)
         attention_mask = np.array(
@@ -215,6 +227,7 @@ class HFOnnxSemanticMatcher:
 
         outputs = self._session.run(None, feeds)
         token_embeddings = np.asarray(outputs[0], dtype=np.float32)
+        # Attention-masked mean pooling matches sentence-transformers' MiniLM head.
         mask_expanded = np.expand_dims(attention_mask.astype(np.float32), axis=-1)
         summed = np.sum(token_embeddings * mask_expanded, axis=1)
         counts = np.clip(np.sum(mask_expanded, axis=1), a_min=1e-9, a_max=None)

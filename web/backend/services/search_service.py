@@ -42,7 +42,22 @@ def merge_followup_params(
     current: SearchParams,
     query: str,
 ) -> SearchParams:
-    """Merge follow-up SearchParams onto previous active search context."""
+    """Merge follow-up ``SearchParams`` onto previous active search context.
+
+    Preserves statelessness across API replicas by accepting the client's prior
+    ``SearchParams``. Clarifications (off-topic or unknown locations) and
+    explicit reset phrases bypass merging so errors are never masked by stale
+    filters.
+
+    Args:
+        previous: Active ``SearchParams`` from the prior conversation turn.
+        current: Newly parsed ``SearchParams`` from the follow-up prompt.
+        query: Raw follow-up query text checked for explicit reset phrases.
+
+    Returns:
+        Merged ``SearchParams`` with location-hierarchy and currency conflicts
+        resolved.
+    """
     if current.needs_clarification is not None or _RESET_CONTEXT_PATTERN.search(query):
         return current
 
@@ -51,6 +66,7 @@ def merge_followup_params(
     locality = previous.locality
 
     if current.country is not None:
+        # Changing country invalidates any narrower city/locality from the prior turn.
         if previous.country and current.country.lower() != previous.country.lower():
             city = None
             locality = None
@@ -59,6 +75,8 @@ def merge_followup_params(
     if current.city is not None:
         if previous.city and current.city.lower() != previous.city.lower():
             locality = None
+        # Clear inherited country when pivoting cities (e.g. India -> "in London")
+        # so an old country filter cannot zero out results for the new city.
         if current.country is None:
             country = None
         city = current.city

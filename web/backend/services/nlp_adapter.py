@@ -435,10 +435,22 @@ class RuleBasedParser:
         )
 
     def _extract_cuisines(self, text_lower: str) -> list[str]:
-        """Extract canonical cuisines from vocabulary and known synonyms."""
+        """Extract canonical cuisines from vocabulary and known synonyms.
+
+        Matches longest candidates first and records character spans so shorter
+        sub-phrases (e.g., ``Indian`` inside ``North Indian``) are not emitted
+        as duplicate OR-filters in SQL search.
+
+        Args:
+            text_lower: Lowercased user query string.
+
+        Returns:
+            Ordered list of unique canonical cuisine names found in the query.
+        """
         found: list[str] = []
         seen: set[str] = set()
         occupied_spans: list[tuple[int, int]] = []
+        # Longest-first span tracking stops "North Indian" from also matching "Indian".
         for cuisine in sorted(self._vocabulary.cuisines, key=len, reverse=True):
             pattern = rf"(?<!\w){re.escape(cuisine.lower())}(?!\w)"
             match = re.search(pattern, text_lower)
@@ -468,7 +480,19 @@ class RuleBasedParser:
         raw_query: str,
         text_lower: str,
     ) -> str | None:
-        """Detect an explicit 'in/near/around <place>' phrase not in vocabulary."""
+        """Detect an explicit location preposition phrase absent from vocabulary.
+
+        Used only when exact country, city, and locality matching all failed so
+        out-of-catalog places (e.g., ``in Cairo`` or ``on Mars``) trigger a
+        clarification instead of silently returning worldwide venues.
+
+        Args:
+            raw_query: Original user query preserving casing for error messages.
+            text_lower: Lowercased copy of ``raw_query``.
+
+        Returns:
+            The unmatched location phrase if detected, otherwise ``None``.
+        """
         stop_pattern = (
             r"\b(?:with|without|under|below|max|less|above|over|rated|rating|"
             r"price|tier|for|and|or|delivers|delivery|booking|reservations?|"
@@ -508,6 +532,7 @@ class RuleBasedParser:
             "offer",
             "sale",
         }
+        # Negative lookahead avoids treating "at least 4 stars" as a place name.
         for match in re.finditer(
             r"\b(?:in|near|around|on|at(?!\s+least\b))\s+([^,;?.!]+)",
             text_lower,
@@ -614,9 +639,21 @@ class RuleBasedParser:
         )
 
     def parse(self, query: str) -> SearchParams:
-        """Parse a user query into SearchParams using deterministic rules."""
+        """Parse a user query into validated ``SearchParams``.
+
+        Applies deterministic extraction first (domain gate, locations,
+        cuisines, ratings, budgets, booleans), then enriches unmatched dish or
+        price-tier intent through the optional local HF ONNX semantic matcher.
+
+        Args:
+            query: Raw natural-language prompt from the user.
+
+        Returns:
+            Validated ``SearchParams`` constrained to known vocabulary values.
+        """
         text_lower = query.lower()
         cuisines = self._extract_cuisines(text_lower)
+        # Reject non-dining prompts before extracting generic budget/city tokens.
         if self._is_off_topic_query(query, text_lower, cuisines):
             return SearchParams(
                 needs_clarification=(
@@ -632,6 +669,8 @@ class RuleBasedParser:
         if locality and city and locality.lower() == city.lower():
             locality = None
 
+        # Only attempt fuzzy typo recovery on explicit location clauses when exact
+        # lookups miss, keeping short/unrelated words (e.g. "Mars") unmatched.
         unknown_location: str | None = None
         if country is None and city is None and locality is None:
             unknown_location = self._extract_unmatched_location(query, text_lower)
@@ -658,6 +697,8 @@ class RuleBasedParser:
             and self._semantic_matcher is not None
             and self._semantic_matcher.is_ready()
         ):
+            # Strip matched locations so city names (e.g. "Dubai") do not bias
+            # semantic cuisine embeddings toward regional cuisines.
             semantic_query = query
             for loc_token in (country, city, locality):
                 if loc_token:
@@ -669,6 +710,7 @@ class RuleBasedParser:
                     )
             semantic_query = " ".join(semantic_query.split())
             if not cuisines and cuisine_group is None:
+                # Strip meal/vibe words so "fancy dinner" does not match "Diner".
                 cuisine_query = self._clean_for_semantic_cuisine(semantic_query)
                 if cuisine_query:
                     cuisines = self._semantic_matcher.match_cuisines(cuisine_query)
