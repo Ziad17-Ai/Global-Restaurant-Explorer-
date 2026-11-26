@@ -1,9 +1,0 @@
-pandas
-SQLAlchemy
-PyMySQL
-python-dotenv
-openpyxl
-azure-storage-blob
-azure-identity
-apache-airflow-providers-mysql
-pytest

@@ -69,16 +69,23 @@ reports_path = "data/reports"
 logs_path = "logs"
 bronze_container = "bronze"
 
+[database]
+connect_timeout_seconds = 15
+
 [sources.zomato]
-kaggle_dataset = "shrutimehta/zomato-restaurants-data"   # confirm (DATA_SOURCES.md, DS-1)
+kaggle_dataset = "shrutimehta/zomato-restaurants-data"
 schedule = "@weekly"
 skip_if_unchanged = true
 file_name = "zomato.csv"
-file_encoding = "latin-1"                                 # confirm (DS-2)
+file_encoding = "latin-1"                                 # confirm (DATA_SOURCES.md, DS-2)
 
 [nlp]
-model_id = "replace_after_spike_s3"     # decision D-3
-provider = "replace_after_spike_s3"
+model_id = "Qwen/Qwen3-32B"
+provider = "auto"
+semantic_model_id = "sentence-transformers/all-MiniLM-L6-v2"
+semantic_enabled = true
+semantic_cuisine_threshold = 0.48
+semantic_price_threshold = 0.44
 timeout_seconds = 5
 max_input_chars = 500
 max_output_tokens = 256
@@ -90,6 +97,8 @@ cache_ttl_seconds = 3600
 nlp_rate_limit_per_minute = 30
 page_default_limit = 20
 page_max_limit = 100
+allow_csv_fallback_in_local = true
+local_fallback_csv_path = "data/zomato.csv"
 
 [streamlit]
 api_timeout_seconds = 10
@@ -115,7 +124,7 @@ Implementation pattern (finalized during refactoring): a `pydantic-settings` `Ba
 
 ## 5. Precedence (highest first)
 
-1. OS environment variables (App Service settings, Key Vault references, CI `env:`, Docker `environment:`).
+1. OS environment variables (Azure Container Apps / Job environment & Key Vault references, CI `env:`, Docker `environment:`).
 2. `.env` file (local development only).
 3. `config/settings.toml`.
 4. Defaults in the settings class (non-secret only).
@@ -126,8 +135,9 @@ Implementation pattern (finalized during refactoring): a `pydantic-settings` `Ba
 | --- | --- | --- |
 | Local | `.env` | `config/settings.toml` |
 | CI (GitHub Actions) | Repository **Secrets** for secrets; repository **Variables** for non-secret environment values; set in the workflow `env:` block | `config/settings.toml` (plus `SECTION_KEY` overrides if a test needs them) |
-| Production: App Service (backend, Streamlit) | Application Settings; secrets as Key Vault references, for example `@Microsoft.KeyVault(VaultName=<vault>;SecretName=mysql-app-password)` | `config/settings.toml` shipped with the app |
-| Production: Airflow VM | Key Vault values injected as environment variables into the Airflow containers | `config/settings.toml` mounted with the DAGs |
+| Production: Azure Container Apps (`ca-eatosphere-backend`, `ca-eatosphere-streamlit`) | Container env vars; backend secrets via Key Vault references (`keyvaultref:...` with Managed Identity `id-eatosphere-prod`); Streamlit holds zero DB credentials | `config/settings.toml` baked into container image |
+| Production: ACA Scheduled Job (`job-eatosphere-etl`) | Key Vault values (`keyvaultref:...`) injected as environment variables into the `@weekly` ETL job | `config/settings.toml` baked into container image |
+| Local Docker: Airflow 3.x | `AIRFLOW_CONN_*` JSON connection strings composed from `.env` in `docker-compose.yml` | `config/settings.toml` mounted/baked with DAGs |
 
 ## 7. Airflow credentials (decision R5-B)
 
@@ -169,7 +179,7 @@ environment:
 | Event | Action |
 | --- | --- |
 | Secret committed by mistake | Tell the team immediately and rotate it. Deleting the commit is not enough |
-| Planned production rotation | Update the Key Vault secret, then restart the App Service or Airflow containers. No code change |
+| Planned production rotation | Update the Key Vault secret, then restart the Container App revision or job. No code change |
 | Airflow Fernet key rotation | Follow Airflow's key-rotation procedure (old and new keys side by side, then remove the old key) |
 | Team member leaves | Rotate shared secrets (database passwords, Fernet key, JWT secret, API keys) |
 

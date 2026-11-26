@@ -1,7 +1,7 @@
 # Software Requirements Specification (SRS)
 
-> **Status:** Draft v0.4, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could).
-> **Last updated:** 2026-11-24
+> **Status:** Draft v0.5, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could).
+> **Last updated:** 2026-11-26
 
 ## 1. Introduction
 
@@ -98,7 +98,7 @@ flowchart LR
 | Preconditions | Database loaded; NLP adapter configured |
 | Trigger | User submits a free-text request |
 | Main flow | 1. Streamlit sends the text to the backend. 2. Backend sends it to the NLP adapter (5-second timeout). 3. Adapter returns structured parameters (country, city, cuisine, price, rating, locality). 4. Backend validates the parameters against the schema and known canonical vocabulary (`docs/CUISINE_VOCABULARY.md`). 5. Backend runs a parameterized query. 6. Streamlit shows results, map markers, and the interpreted filters. |
-| Alternate flows | A1. Service fails or times out: use the rule-based parser. A2. Output invalid: discard and use the rule-based parser. A3. Request ambiguous or unsupported: ask the user to clarify. A4. No results: suggest relaxing filters. |
+| Alternate flows | A1. Remote LLM service fails, lacks credits, or times out: fall back to the local Hugging Face `all-MiniLM-L6-v2` ONNX semantic hybrid + deterministic rules. A2. Output invalid: discard and use local fallback. A3. Request off-topic, ambiguous, or in an unsupported area: ask the user to clarify (`needs_clarification`). A4. Follow-up prompt refines prior `previous_params` statelessly until reset. A5. No results: suggest relaxing filters. |
 | Postconditions | Results shown; interpreted filters visible |
 | Notes | The model never produces executable SQL. Parameters are its only output. User query logs are truncated to 220 characters. |
 
@@ -134,7 +134,7 @@ flowchart LR
 | FR-N2 | Translate requests into validated structured parameters checked against known locations and canonical cuisines | Must | US-05 |
 | FR-N3 | Show interpreted filters to the user | Should | US-06 |
 | FR-N4 | Ask for clarification when a request is ambiguous or unsupported | Should | US-06 |
-| FR-N5 | Fall back to a rule-based parser if the service fails, exceeds the 5-second timeout, or returns invalid output | Must | US-05 |
+| FR-N5 | Fall back to the local Hugging Face ONNX semantic hybrid + deterministic rule-based parser if the remote service fails, exceeds the 5-second timeout, or returns invalid output | Must | US-05 |
 | FR-N6 | Never execute model-generated SQL; use parameterized queries only | Must | US-05 |
 | FR-N7 | Accept Arabic requests | Could | US-13 |
 | **Data pipeline** | | | |
@@ -184,9 +184,9 @@ Targets are initial baselines validated during implementation and evaluation.
 | ID | Question | Resolution path |
 | ---- | ---------- | ----------------- |
 | OI-1 | Which additional source(s) for Increment 2 | Spike S1 (`docs/DATA_SOURCES.md`) |
-| OI-2 | Airflow hosting (local Docker vs. Azure Linux VM) | Spike S2 |
-| OI-3 | Hugging Face model and provider | Spike S3 |
-| OI-4 | Azure access, credits, cost | Spike S4 |
+| OI-2 | Airflow / ETL hosting (local Docker vs. Azure) | **Closed (Spike S2 / D-2):** Azure Container Apps Scheduled Job (`@weekly`) in prod; Apache Airflow 3.x in local Docker Compose |
+| OI-3 | Hugging Face model and provider | **Closed (Spike S3):** `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` tier |
+| OI-4 | Azure access, credits, cost | **Closed (Spike S4):** Deployed in `polandcentral` on Azure for Students (`~$5–$21/month`) |
 | OI-5 | Target countries and cities for the demo | Zomato cities in Increment 1; revisit with Source 2 |
 | OI-6 | Handling mixed currencies | **Closed:** keep original amount + ISO 4217 code and compute batch-pinned `avg_cost_for_two_usd` (`CODE_STYLE.md` §2) |
 | OI-7 | Final deadline date | Confirm with the academy |
@@ -207,3 +207,4 @@ Each requirement links to a user story. Automated architecture boundary tests (`
 | 2026-10-30 | v0.2: aligned to team proposal; added admin stories, currency and Egypt coverage notes |
 | 2026-11-23 | v0.3: codified Option A data access (Streamlit calls FastAPI over HTTP via `api_client.py`, holding no database credentials); updated testing scope to include Streamlit `AppTest` smoke tests |
 | 2026-11-24 | v0.4: scoped Increment 1 to Zomato via dynamic Kaggle API fetch; promoted FR-D7 (incremental loads & change detection) to Must; promoted US-12 and FR-A1 (`/api/pipeline/status` with per-rule breakdown) to Should; added FR-A2 (`GET /api/health`); added 15% quarantine gate, 7-day staleness threshold, 95% availability goal, 100K restaurant / 5–20 user capacity targets, 5s HF timeout, 220-char query log cap, JSON structured logging, Chrome/Edge/Firefox browser support, co-deployed unversioned API policy, `AIRFLOW_CONN_*` & `config/settings.toml` rules, and `UI_UX.md` / `CUISINE_VOCABULARY.md` / `DATA_QUALITY_RULES.md` references; closed OI-6 |
+| 2026-11-26 | v0.5: closed OI-2 (Spike S2 / Decision D-2: ACA Scheduled Job in prod + Airflow 3.x locally) and OI-4 (Spike S4: Azure Container Apps deployment in `polandcentral`) | Increment 1 production deployment |

@@ -41,8 +41,8 @@ The checksum test is a second guard for sources whose metadata changes without a
 | Item | Value |
 | --- | --- |
 | Role | Baseline dataset for the current increment |
-| Dataset | Kaggle dataset identifier in `config/settings.toml` (`[sources.zomato] kaggle_dataset`). The upload most often used is `shrutimehta/zomato-restaurants-data`; the team confirms the exact uploader, version, and license page before the first scheduled run (see section 5) |
-| Files | `zomato.csv` (restaurants). The same upload is understood to include a country-code lookup file; confirm and ingest it if present, because restaurants carry only a numeric `Country Code` |
+| Dataset | Kaggle dataset identifier in `config/settings.toml` (`[sources.zomato] kaggle_dataset = "shrutimehta/zomato-restaurants-data"`, confirmed per DS-1) |
+| Files | `zomato.csv` (restaurants). All 15 numeric `Country Code` ISO/currency mappings are seeded deterministically in `sql/001_create_tables.sql` and `constants.py` |
 | Access | Kaggle API using `KAGGLE_USERNAME` and `KAGGLE_KEY` (secrets, see `SECRETS.md`) |
 | License | CC0 1.0 for the upload reviewed in `LITERATURE_REVIEW.md`; record it in `source_metadata.license` |
 | Update pattern | Rarely updated snapshot |
@@ -92,8 +92,8 @@ These are recorded so the design supports them. Integration, field mapping, lice
 
 | ID | Question | When |
 | --- | --- | --- |
-| DS-1 | Confirm the exact Kaggle uploader, dataset version, license page, and whether a country-code file is included | Before the first scheduled run |
-| DS-2 | Confirm the file encoding and the full list of mojibake repairs | During Zomato ingestion work |
+| DS-1 | Closed: confirmed Kaggle slug `shrutimehta/zomato-restaurants-data`; all 15 country codes seeded in schema and constants | Resolved |
+| DS-2 | Confirm whether additional mojibake repairs beyond `Pounds(£)`, `Döner`, `Börek`, and `İstanbul` appear in future Zomato snapshots | Ongoing during ingestion monitoring |
 | DS-3 | Should Gold hide restaurants no longer present in the latest batch of their source? | After the Zomato increment works end to end |
 | DS-4 | Delta detection for large candidate sources (file-level only, or record-level change feeds) | When a second source is chosen |
 

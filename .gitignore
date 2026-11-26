@@ -41,9 +41,11 @@ airflow.db
 airflow-webserver.pid
 logs/
 airflow/logs/
+data/bronze/
 data/raw/
 data/processed/
 data/quarantine/
+data/reports/
 data/*.parquet
 data/*.jsonl
 *.sql.gz

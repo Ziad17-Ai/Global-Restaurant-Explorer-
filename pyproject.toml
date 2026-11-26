@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+extend-exclude = ["_incoming", ".agents"]
 
 [tool.ruff.lint]
 select = [
@@ -24,10 +25,17 @@ max-complexity = 18
 
 [tool.mypy]
 python_version = "3.12"
+files = ["pipeline", "web", "tests"]
+exclude = ["^_incoming/", "^\\.agents/"]
 disallow_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.setuptools]
 py-modules = []

@@ -1,7 +1,7 @@
 # Architecture and Design
 
-> **Status:** Draft v0.5, a living document. Items marked **TBD** depend on spikes S1-S4 and may change. Diagrams use Mermaid and render on GitHub and in local preview extensions that support it.
-> **Last updated:** 2026-11-24
+> **Status:** Draft v0.6, a living document. Items marked **TBD** depend on Increment 2 spikes (S1) and may change. Diagrams use Mermaid and render on GitHub and in local preview extensions that support it.
+> **Last updated:** 2026-11-26
 
 ## 1. Goals and constraints
 
@@ -356,10 +356,11 @@ SearchParams {
 
 ### Components
 
-- **Adapter interface:** `parse(query) -> SearchParams`, with a Hugging Face implementation and a rule-based implementation.
+- **Adapter interface:** `parse(query) -> SearchParams`, with a Hugging Face `InferenceClient` implementation (`HuggingFaceAdapter`) and a local Hugging Face ONNX semantic hybrid (`HFOnnxSemanticMatcher` using `sentence-transformers/all-MiniLM-L6-v2` + `RuleBasedParser`).
 - **Validation:** output checked against the schema and the vocabulary of known countries, cities, localities, and canonical cuisines. Unknown values are dropped or flagged.
-- **Fallback:** on timeout (`[nlp] timeout_seconds`, 5 seconds), error, or invalid output, use the rule-based parser.
-- **Clarification:** ambiguous or unsupported requests return a question for the user.
+- **Fallback:** on timeout (`[nlp] timeout_seconds`, 5 seconds), error, `402`/`429`, or invalid output, fall back to the local `all-MiniLM-L6-v2` ONNX semantic hybrid + deterministic rules (or pure regex rules if the ONNX model is unavailable). In the local parser, off-topic non-dining prompts are rejected via a domain gate, longer cuisine names take precedence over overlapping shorter ones (e.g., `"North Indian"` vs. `"Indian"`), city aliases/minor typos are normalized, and unknown explicit `in`/`near`/`around`/`on`/`at <place>` locations return `needs_clarification` instead of unfiltered results.
+- **Clarification:** ambiguous, off-topic, or unsupported-location requests return a question for the user.
+- **Follow-up refinement:** `POST /api/search/nl` accepts optional `previous_params` (`SearchParams`) so multi-turn follow-up prompts (e.g., `"restaurants in India"` -> `"in New Delhi"` -> `"North Indian rated above 4.2"`) merge statelessly onto active filters with clean location-hierarchy overrides and explicit `"New search"` / `"start over"` resets.
 - **Cache:** repeated queries reuse parsed results.
 - **Transparency:** the UI shows the interpreted filters.
 
@@ -432,7 +433,7 @@ classDiagram
 - Parameterized queries only; model output is never executed.
 - The backend uses a read-only application account; the pipeline uses a separate write account.
 - HTTPS everywhere; CORS limited to the Streamlit presentation origin.
-- MySQL firewall rules allow only the App Service, the Airflow host, and named developer IPs. Private networking is a Could item.
+- MySQL firewall rules allow Azure services (Container Apps & Scheduled Job) with verified TLS (`MYSQL_TLS_ENABLED=TRUE`); temporary deployer IP rules are removed after schema bootstrap. Private networking is a Could item.
 - Airflow web interface restricted to team members.
 - Rate limiting on the NLP endpoint to control cost.
 - User NLP text is logged only truncated to 220 characters.
@@ -450,14 +451,14 @@ Full rules: `docs/SECRETS.md`.
 
 - **Structured logs:** pipeline and backend log JSON lines with `timestamp` (UTC), `level`, `logger`, `message`, and context fields when present (`run_id`, `batch_id`, `source_id`, `rule_name`, `request_id`). Secrets are never logged.
 - **Run records:** `pipeline_runs` and `data_quality_issues` give per-run and per-rule counts.
-- **Health:** `GET /api/health` returns `{"status": "ok"}` for the App Service health check.
+- **Health:** `GET /api/health` returns `{"status": "ok"}` for the Azure Container Apps health probe.
 
 | Alert condition | Threshold | Action |
 | --- | --- | --- |
 | Quality gate | Quarantine rate above 15% | Run marked `quality_gate_failed`; Silver and Gold not updated; alert |
-| Task failure | A task fails after its retries | Airflow failure callback alert |
+| Task failure | A task fails after its retries | Airflow failure callback (local) / ACA Job failed execution status (prod) |
 | Data staleness | No successful run (including `skipped_unchanged`) for more than 7 days | Alert; the app shows a staleness notice |
-| Backend health | `GET /api/health` failing | App Service restarts the instance |
+| Backend health | `GET /api/health` failing | Azure Container Apps restarts the replica |
 
 The alert channel (email or chat webhook) is configured in Airflow during deployment.
 
@@ -472,45 +473,47 @@ The alert channel (email or chat webhook) is configured in Airflow during deploy
 ```mermaid
 flowchart LR
     U([User browser])
-    subgraph AZ["Microsoft Azure"]
-        APPUI["App Service: Streamlit"]
-        APPS["App Service: FastAPI"]
+    subgraph AZ["Microsoft Azure (polandcentral)"]
+        APPUI["Container App: Streamlit"]
+        APPS["Container App: FastAPI + ONNX"]
+        JOB["Container Apps Job: ETL (@weekly)"]
         MYSQL[("Database for MySQL Flexible Server")]
         BLOB[("Blob Storage: Bronze")]
-        VM["Linux VM: Apache Airflow"]
-        KV["Key Vault"]
-        MON["Monitor and Application Insights"]
+        ACR[("Container Registry: ACR")]
+        KV["Key Vault (RBAC)"]
+        MON["Log Analytics"]
     end
     HF([Hugging Face Inference])
     KG([Kaggle API])
-    GH["GitHub and Actions"]
-    U --> APPUI
+    GH["GitHub Actions (OIDC)"]
+    U -->|HTTPS| APPUI
     APPUI -->|HTTPS| APPS
-    APPS --> MYSQL
+    APPS -->|TLS| MYSQL
     APPS --> HF
     APPS -.-> KV
-    APPUI -.-> KV
-    VM --> KG
-    VM --> BLOB
-    VM --> MYSQL
-    VM -.-> KV
+    JOB --> KG
+    JOB --> BLOB
+    JOB -->|TLS| MYSQL
+    JOB -.-> KV
+    GH -->|AcrPush| ACR
+    ACR -.->|AcrPull| APPUI
+    ACR -.->|AcrPull| APPS
+    ACR -.->|AcrPull| JOB
     APPS -.-> MON
-    GH --> APPUI
-    GH --> APPS
+    JOB -.-> MON
 ```
 
 | Azure service | Purpose | Priority |
 | --------------- | --------- | ---------- |
-| Database for MySQL Flexible Server | Main database | Must |
-| Blob Storage | Bronze raw files | Must |
-| App Service | FastAPI backend | Must |
-| App Service | Streamlit web presentation | Must |
-| Linux VM | Airflow host | Should |
-| Key Vault | Secrets | Should |
-| Monitor and Application Insights | Monitoring | Could |
-| Virtual Network | Private networking | Could |
+| Database for MySQL Flexible Server (`Standard_B1ms`) | Silver & Gold database (TLS required) | Must |
+| Blob Storage (`Standard_LRS`) | Bronze raw files (`bronze` container) | Must |
+| Azure Container Apps (`WorkloadProfiles` Consumption) | FastAPI backend (`ca-eatosphere-backend`) & Streamlit UI (`ca-eatosphere-streamlit`) | Must |
+| Azure Container Apps Scheduled Job | Weekly batch ETL (`job-eatosphere-etl`, `@weekly` cron) | Should |
+| Azure Container Registry (`Basic`) | Stores `backend`, `streamlit`, and `pipeline` images | Must |
+| Key Vault (RBAC) | Secrets accessed via Managed Identity (`id-eatosphere-prod`) | Should |
+| Log Analytics | Container Apps & Job execution logs | Could |
 
-Each deployed app ships `config/settings.toml` with its code. The backend and the Streamlit app are deployed together from the same commit (section 15).
+Each deployed container ships `config/settings.toml` with its code. The backend and the Streamlit app are deployed together from the same commit (section 15). Local development and Airflow DAG orchestration remain supported via the Docker Compose stack (`docker-compose.yml`).
 
 If Azure access or cost blocks any Must item, the fallback is local MySQL and Docker for the demo, documented honestly (spike S4).
 
@@ -523,12 +526,12 @@ If Azure access or cost blocks any Must item, the fallback is local MySQL and Do
 | Database | MySQL on Azure Flexible Server | Decided |
 | Raw storage | Azure Blob Storage | Decided |
 | Source access | Kaggle API for the Zomato dataset | Decided |
-| Orchestration | Apache Airflow | Decided (hosting TBD, S2) |
+| Orchestration | Azure Container Apps Scheduled Job (`@weekly` in prod); Apache Airflow 3.x (local Docker Compose) | Decided (D-2) |
 | Backend | FastAPI | Decided |
 | Web presentation | Streamlit (accesses data via FastAPI over HTTP) | Decided |
-| NLP | Hugging Face Inference Providers | Decided (model TBD, S3) |
+| NLP | Hugging Face `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` | Decided (D-3) |
 | Configuration | Environment variables for secrets; `config/settings.toml` for settings | Decided |
-| Hosting | App Service, Linux VM | Decided (VM Should) |
+| Hosting | Azure Container Apps (`WorkloadProfiles` Consumption), ACR, Key Vault | Decided |
 | Version control | Git and GitHub | Decided |
 
 ## 14. UI/UX
@@ -556,8 +559,8 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | ID | Decision | Depends on | Status |
 | ---- | ---------- | ------------ | ------ |
 | D-1 | Additional source(s) | S1 | Open; the current increment uses Zomato only |
-| D-2 | Airflow hosting | S2 | Open |
-| D-3 | Hugging Face model and provider | S3 | Open |
+| D-2 | Airflow / ETL hosting | S2 | Closed: Production ETL runs on Azure Container Apps Scheduled Job (`job-eatosphere-etl`, `@weekly` cron) within the \$100 Student budget; Apache Airflow 3.x DAG orchestration is supported via Docker Compose |
+| D-3 | Hugging Face model and provider | S3 | Closed: `sentence-transformers/all-MiniLM-L6-v2` ONNX semantic hybrid always-on (`$0`, `30/30` Spike S3, `P95=89.7 ms`, `+185.7 MB RSS`) + `HuggingFaceAdapter` (`Qwen/Qwen3-32B`, `provider="auto"`) ready for free custom provider keys |
 | D-4 | Cross-source matching method | Second source | Open; `match_group_id` kept as a placeholder |
 | D-5 | Spatial storage and indexing | | Closed: `POINT SRID 4326` with a spatial index in Gold (`CODE_STYLE.md`, section 4) |
 | D-8 | Cross-source enrichment (matched records enrich each other, or stay separate) | Second source | Deferred, low priority |
@@ -570,4 +573,5 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | 2026-10-30 | v0.1 created |
 | 2026-11-20 | v0.3: adopted Streamlit as the primary web presentation framework and updated application and deployment views |
 | 2026-11-23 | v0.4: codified Option A data access (Streamlit accesses data exclusively via FastAPI over HTTP through `web/streamlit/api_client.py`, holding no database credentials); updated component view, security notes, and status header |
+| 2026-11-26 | v0.5: closed D-3 / Spike S3 with `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` two-tier NLP, off-topic domain gate, and stateless `previous_params` follow-up refinement |
 | 2026-11-24 | v0.5: design scope and capacity (100K restaurants, 5-20 users, 95% availability); per-source schedules with check-before-download and Kaggle API fetch; incremental loads (FR-D7 Must); 15% quality gate; ERD extended (currency and USD fields, `record_hash`, `last_seen_batch_id`, batch version and checksum, run outcome counts, issue severity, cuisine group); enrichment and inference section; configuration and secrets split; Airflow `AIRFLOW_CONN_*` connections; JSON logs, alert thresholds, 7-day freshness; `GET /api/health`; pipeline status promoted to Should; API change policy; supported browsers; D-5 closed; D-8 and D-9 added |

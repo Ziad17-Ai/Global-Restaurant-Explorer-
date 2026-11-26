@@ -114,7 +114,7 @@ def split_valid_ratings(
 
 ### NLP adapter rules
 
-- We use a third-party open model hosted through Hugging Face Inference Providers. The repository contains no model training, fine-tuning, or self-hosting code.
+- We use Hugging Face Inference Providers (`HuggingFaceAdapter`) for optional remote LLM extraction and a lightweight pre-trained Hugging Face ONNX encoder (`sentence-transformers/all-MiniLM-L6-v2` via `onnxruntime`, no PyTorch) as the zero-cost always-on semantic hybrid. The repository contains no model training or fine-tuning code.
 - The model ID and provider are configuration (`config/settings.toml` `[nlp]`, overridable via environment variables), not inline literals in business code; `HF_API_KEY` is an environment secret. Which model was chosen, and its license, are recorded in the decision log (D-3), not in this guide.
 - Changing the model or provider means re-running the sample-query suite (section 9) before merge.
 - The prompt template lives in its own versioned file, not inline in code.
