@@ -9,7 +9,8 @@ A data engineering platform that programmatically ingests restaurant data on per
 
 The data pipeline is the core of the project. The web app is the layer users interact with.
 
-### Live Azure Deployment (`polandcentral`)
+### Reference Live Deployment (`polandcentral`)
+> **Note:** Azure Container Apps generates unique FQDNs per deployment. The links below point to the team's reference deployment; your own deployment will generate its own URLs (see [`docs/DEPLOY_AZURE.md`](docs/DEPLOY_AZURE.md)).
 - **Streamlit Web App:** https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io
 - **FastAPI Backend & OpenAPI Docs:** https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs
 
@@ -22,7 +23,7 @@ Execution and deployment instructions are separated into two dedicated runbooks:
 | Guide | Audience & Purpose | Link |
 | --- | --- | --- |
 | **Run Locally** | Full-stack **Docker Compose** (MySQL, Airflow 3.x, FastAPI, Streamlit) & **Local Python** (with CSV fallback), workflow diagrams, tests, and local troubleshooting | [`docs/RUN_LOCAL.md`](docs/RUN_LOCAL.md) |
-| **Deploy to Azure** | End-to-end **Microsoft Azure** production deployment (`polandcentral`, \$100 Student budget), **Manual CLI** & **Agentic/MCP** workflows, OIDC CI/CD, and common errors & fixes | [`docs/DEPLOY_AZURE.md`](docs/DEPLOY_AZURE.md) |
+| **Deploy to Azure** | End-to-end **Microsoft Azure** production deployment (\$100 Student budget) via **Track A (Manual CLI)**, **Track B (Agentic/MCP)**, or **Track C (Manual Azure Portal Web UI)**, plus OIDC CI/CD and common errors & fixes | [`docs/DEPLOY_AZURE.md`](docs/DEPLOY_AZURE.md) |
 
 ---
 

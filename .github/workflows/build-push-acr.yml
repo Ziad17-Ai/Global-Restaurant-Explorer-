@@ -42,7 +42,9 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Log in to Azure Container Registry
-        run: az acr login --name acreatosphere2611
+        env:
+          ACR_NAME: ${{ vars.ACR_NAME || 'acreatosphere2611' }}
+        run: az acr login --name "$ACR_NAME"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -55,7 +57,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            acreatosphere2611.azurecr.io/${{ matrix.name }}:${{ github.sha }}
-            acreatosphere2611.azurecr.io/${{ matrix.name }}:latest
+            ${{ vars.ACR_NAME || 'acreatosphere2611' }}.azurecr.io/${{ matrix.name }}:${{ github.sha }}
+            ${{ vars.ACR_NAME || 'acreatosphere2611' }}.azurecr.io/${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}

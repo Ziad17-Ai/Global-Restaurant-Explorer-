@@ -1,14 +1,17 @@
 # Production Deployment Guide on Microsoft Azure
 
 > **Last updated:** 2026-11-26  
-> **Target Environment:** Microsoft Azure (`Azure for Students`, \$100 credit budget) · Region: `polandcentral`  
-> **Live Endpoints:**  
-> - **Streamlit Web App:** https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io  
-> - **FastAPI Backend & OpenAPI:** https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs  
+> **Target Environment:** Microsoft Azure (`Azure for Students`, \$100 credit budget)  
+> **Portability Note:** Anyone can deploy this repository to their own Azure subscription and GitHub fork. Globally unique resource names (ACR, Storage Account, Key Vault, MySQL server) and generated Container Apps URLs will differ per deployment — replace `<suffix>`, `<your-region>`, and `<your-...-fqdn>` with your own values.
 
-This guide covers deploying **Global Restaurant Explorer** from scratch on Azure using **two workflows**:
-- **Track A:** Manual CLI & GitHub Actions workflow (no AI agents or MCPs required).
-- **Track B:** Delegated Agentic / MCP-assisted workflow (`azure-mcp`, `gh`, and `browser` subagent).
+### Reference Demo Deployment (`polandcentral`)
+- **Streamlit Web App:** https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io
+- **FastAPI Backend & OpenAPI:** https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs
+
+This guide provides **three independent deployment tracks** — pick whichever matches your workflow:
+- **Track A — Manual CLI Workflow (Without MCPs/Agents):** Reproducible PowerShell/Bash `az` + `gh` scripts.
+- **Track B — Agentic / MCP-Assisted Workflow:** Delegated setup using AI coding agents, `azure-mcp`, and the `browser` subagent.
+- **Track C — Manual Web UI Workflow (Azure Portal + GitHub Web UI):** Point-and-click deployment directly through [portal.azure.com](https://portal.azure.com) with links to official Microsoft Learn guides.
 
 ---
 
@@ -18,7 +21,7 @@ Resources are provisioned **bottom-up** in strict dependency order so each layer
 
 ```mermaid
 flowchart TB
-    L1["Layer 1: Foundation (polandcentral)<br/>RG + ACR Basic + Storage (bronze) + Key Vault (RBAC) + Managed Identity"]
+    L1["Layer 1: Foundation (<your-region>)<br/>RG + ACR Basic + Storage (bronze) + Key Vault (RBAC) + Managed Identity"]
     L1B["Layer 1b: CI/CD Image Build<br/>GitHub Actions OIDC -> ACR (backend, streamlit, pipeline)"]
     L2["Layer 2: Database<br/>MySQL Flexible Server (B1ms, TLS) + 001/002 SQL + Least-Privilege Users"]
     L3["Layer 3: Compute Env & ETL Seed<br/>ACA Env (WorkloadProfiles) + job-eatosphere-etl (@weekly)"]
@@ -30,16 +33,18 @@ flowchart TB
     L1 --> L2 --> L3 --> L4 --> L5 --> L6
 ```
 
-### Deployed Resource Inventory (`rg-eatosphere-prod`)
+### Target Resource Naming Template
 
-| Layer | Resource Name | Tier / Sizing | Purpose |
+Choose a short lowercase alphanumeric `<suffix>` (for example `2611` or your initials + digits) for globally unique Azure names:
+
+| Layer | Resource Name Pattern | Tier / Sizing | Purpose |
 | --- | --- | --- | --- |
-| Resource Group | `rg-eatosphere-prod` | `polandcentral` | Subscription-policy-compliant region |
-| Container Registry | `acreatosphere2611` | `Basic` (admin disabled) | Stores `backend`, `streamlit`, `pipeline` images |
-| Blob Storage | `steatosphere2611` | `Standard_LRS` (`bronze` container) | Append-only raw Kaggle Zomato batches |
-| Key Vault | `kv-eatosphere-2611` | `Standard` (RBAC enabled) | Holds 7 secrets accessed via Managed Identity |
+| Resource Group | `rg-eatosphere-prod` | Allowed region (e.g., `polandcentral`) | Logical container for all resources |
+| Container Registry | `acreatosphere<suffix>` | `Basic` (admin disabled) | Stores `backend`, `streamlit`, `pipeline` images |
+| Blob Storage | `steatosphere<suffix>` | `Standard_LRS` (`bronze` container) | Append-only raw Kaggle Zomato batches |
+| Key Vault | `kv-eatosphere-<suffix>` | `Standard` (RBAC enabled) | Holds 7 secrets accessed via Managed Identity |
 | Managed Identity | `id-eatosphere-prod` | User-Assigned | `AcrPull`, `AcrPush` (OIDC), `Key Vault Secrets User` |
-| MySQL Server | `mysql-eatosphere-2611` | Burstable `Standard_B1ms`, 20 GB | MySQL `8.0.21`, TLS required |
+| MySQL Server | `mysql-eatosphere-<suffix>` | Burstable `Standard_B1ms`, 20 GB | MySQL `8.0.21`, TLS required |
 | ACA Environment | `cae-eatosphere-prod` | `WorkloadProfiles` Consumption | Hosts Scheduled Job + Backend + Streamlit |
 | ETL Job | `job-eatosphere-etl` | `0.5` vCPU, `1.0Gi` RAM, `@weekly` | Runs `pipeline:latest` (`0 3 * * 0` UTC) |
 | Backend App | `ca-eatosphere-backend` | `0.5` vCPU, `1.0Gi` RAM, `0–2` replicas | FastAPI + pre-baked `all-MiniLM-L6-v2` ONNX |
@@ -47,26 +52,27 @@ flowchart TB
 
 ---
 
-## 2. Track A: Manual Deployment Workflow (Without MCPs or Agents)
+## 2. Track A: Manual CLI Workflow (Without MCPs or Agents)
 
 ### 2.1 Prerequisites
-- [Azure CLI (`az`)](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) logged in (`az login`), plus `containerapp` extension:
+- [Azure CLI (`az`)](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) logged in (`az login`), plus the `containerapp` extension:
   ```powershell
   az extension add --name containerapp --upgrade -y
   ```
 - [GitHub CLI (`gh`)](https://cli.github.com/) logged in (`gh auth login`)
 - Python 3.12+ `.venv` with `pymysql` installed (for one-time TLS schema initialization)
-- Valid `KAGGLE_USERNAME`, `KAGGLE_KEY`, and `HF_API_KEY` values ready in `.env`
+- Valid `KAGGLE_USERNAME`, `KAGGLE_KEY`, and `HF_API_KEY` values ready locally
 
-### 2.2 Step 1 — Register Providers & Provision Layer 1 Foundation
+### 2.2 Step 1 — Check Allowed Regions, Register Providers & Provision Foundation
 
 ```powershell
 $SUB = "<your-subscription-id>"
+$SUFFIX = "<your-unique-suffix>"        # e.g., 2611 (lowercase alphanumeric)
 $RG = "rg-eatosphere-prod"
-$LOC = "polandcentral"
-$ACR = "acreatosphere2611"
-$ST = "steatosphere2611"
-$KV = "kv-eatosphere-2611"
+$LOC = "polandcentral"                  # Verify with: az policy assignment list
+$ACR = "acreatosphere$SUFFIX"
+$ST = "steatosphere$SUFFIX"
+$KV = "kv-eatosphere-$SUFFIX"
 $ID = "id-eatosphere-prod"
 
 az account set --subscription $SUB
@@ -99,12 +105,12 @@ az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principa
 az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role "Key Vault Secrets User" --scope $KV_ID
 ```
 
-Store the 7 required secrets in `kv-eatosphere-2611` (never echo secrets to terminal logs):
+Store the 7 required secrets in `$KV` (never echo secrets to terminal logs):
 `mysql-admin-password`, `mysql-pipeline-password`, `mysql-app-password`, `azure-storage-connection-string`, `kaggle-username`, `kaggle-key`, and `hf-api-key`.
 
 ### 2.3 Step 2 — Build & Push Images via GitHub Actions OIDC
 
-Because `Azure for Students` blocks remote `az acr build` (`TasksOperationsNotAllowed`) and local `docker push` can time out on slow home uploads, [`.github/workflows/build-push-acr.yml`](../.github/workflows/build-push-acr.yml) builds and pushes all 3 `linux/amd64` images directly from GitHub Actions using OIDC:
+Because `Azure for Students` disables remote `az acr build` (`TasksOperationsNotAllowed`) and local `docker push` can time out on slow connections, [`.github/workflows/build-push-acr.yml`](../.github/workflows/build-push-acr.yml) builds and pushes all 3 `linux/amd64` images directly from GitHub Actions using OIDC:
 
 ```powershell
 $OWNER = "<github-owner>"
@@ -112,7 +118,7 @@ $OWNER_ID = "<github-owner-numeric-id>"
 $REPO = "<repo-name>"
 $REPO_ID = "<github-repo-numeric-id>"
 
-# Create federated identity credentials matching GitHub's OIDC subject format
+# Create federated credential matching GitHub's OIDC subject format
 az identity federated-credential create --name github-main-id --identity-name $ID --resource-group $RG --issuer https://token.actions.githubusercontent.com --subject "repo:${OWNER}@${OWNER_ID}/${REPO}@${REPO_ID}:ref:refs/heads/main" --audiences api://AzureADTokenExchange
 
 $CLIENT_ID = az identity show --name $ID --resource-group $RG --query clientId -o tsv
@@ -120,20 +126,22 @@ $TENANT_ID = az account show --query tenantId -o tsv
 gh secret set AZURE_CLIENT_ID --body $CLIENT_ID --repo "$OWNER/$REPO"
 gh secret set AZURE_TENANT_ID --body $TENANT_ID --repo "$OWNER/$REPO"
 gh secret set AZURE_SUBSCRIPTION_ID --body $SUB --repo "$OWNER/$REPO"
+gh variable set ACR_NAME --body $ACR --repo "$OWNER/$REPO"
 
-# Trigger or push to run .github/workflows/build-push-acr.yml
+# Trigger workflow
 gh workflow run build-push-acr.yml --repo "$OWNER/$REPO"
 ```
 
 ### 2.4 Step 3 — Provision & Initialize Azure MySQL Flexible Server
 
 ```powershell
+$MYSQL = "mysql-eatosphere-$SUFFIX"
 $ADMIN_PW = az keyvault secret show --vault-name $KV --name mysql-admin-password --query value -o tsv
-az mysql flexible-server create --resource-group $RG --name mysql-eatosphere-2611 --location $LOC --admin-user eatoadmin --admin-password $ADMIN_PW --sku-name Standard_B1ms --tier Burstable --storage-size 20 --version 8.0.21 --public-access 0.0.0.0
+az mysql flexible-server create --resource-group $RG --name $MYSQL --location $LOC --admin-user eatoadmin --admin-password $ADMIN_PW --sku-name Standard_B1ms --tier Burstable --storage-size 20 --version 8.0.21 --public-access 0.0.0.0
 
 # Temporarily allow your deployer IP for schema initialization
 $MY_IP = (Invoke-RestMethod https://api.ipify.org).Trim()
-az mysql flexible-server firewall-rule create --resource-group $RG --name mysql-eatosphere-2611 --rule-name AllowDeployerIP --start-ip-address $MY_IP --end-ip-address $MY_IP
+az mysql flexible-server firewall-rule create --resource-group $RG --name $MYSQL --rule-name AllowDeployerIP --start-ip-address $MY_IP --end-ip-address $MY_IP
 ```
 
 Connect over verified TLS (`ssl.create_default_context()`) using Python + `pymysql`:
@@ -145,24 +153,19 @@ Connect over verified TLS (`ssl.create_default_context()`) using Python + `pymys
 ```powershell
 $ID_RES = az identity show --name $ID --resource-group $RG --query id -o tsv
 $KV_URL = "https://$KV.vault.azure.net"
+$MYSQL_HOST = "$MYSQL.mysql.database.azure.com"
 
 # IMPORTANT: Use --environment-mode WorkloadProfiles (Express mode blocks Jobs and Key Vault refs)
 az containerapp env create --name cae-eatosphere-prod --resource-group $RG --location $LOC --environment-mode WorkloadProfiles
 
 az containerapp job create `
-  --name job-eatosphere-etl `
-  --resource-group $RG `
-  --environment cae-eatosphere-prod `
-  --trigger-type Schedule `
-  --cron-expression "0 3 * * 0" `
+  --name job-eatosphere-etl --resource-group $RG --environment cae-eatosphere-prod `
+  --trigger-type Schedule --cron-expression "0 3 * * 0" `
   --replica-timeout 1800 --replica-retry-limit 1 --parallelism 1 --replica-completion-count 1 `
-  --image "$ACR.azurecr.io/pipeline:latest" `
-  --registry-server "$ACR.azurecr.io" `
-  --registry-identity $ID_RES `
-  --mi-user-assigned $ID_RES `
+  --image "$ACR.azurecr.io/pipeline:latest" --registry-server "$ACR.azurecr.io" --registry-identity $ID_RES --mi-user-assigned $ID_RES `
   --cpu 0.5 --memory 1.0Gi `
   --secrets "mysql-pipeline-password=keyvaultref:$KV_URL/secrets/mysql-pipeline-password,identityref:$ID_RES" "azure-storage-connection-string=keyvaultref:$KV_URL/secrets/azure-storage-connection-string,identityref:$ID_RES" "kaggle-username=keyvaultref:$KV_URL/secrets/kaggle-username,identityref:$ID_RES" "kaggle-key=keyvaultref:$KV_URL/secrets/kaggle-key,identityref:$ID_RES" `
-  --env-vars "APP_ENV=production" "STORAGE_BACKEND=azure" "MYSQL_HOST=mysql-eatosphere-2611.mysql.database.azure.com" "MYSQL_PORT=3306" "MYSQL_DATABASE=global_restaurant_explorer" "MYSQL_TLS_ENABLED=TRUE" "MYSQL_PIPELINE_USER=explorer_pipeline" "MYSQL_PIPELINE_PASSWORD=secretref:mysql-pipeline-password" "AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-connection-string" "KAGGLE_USERNAME=secretref:kaggle-username" "KAGGLE_KEY=secretref:kaggle-key"
+  --env-vars "APP_ENV=production" "STORAGE_BACKEND=azure" "MYSQL_HOST=$MYSQL_HOST" "MYSQL_PORT=3306" "MYSQL_DATABASE=global_restaurant_explorer" "MYSQL_TLS_ENABLED=TRUE" "MYSQL_PIPELINE_USER=explorer_pipeline" "MYSQL_PIPELINE_PASSWORD=secretref:mysql-pipeline-password" "AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-connection-string" "KAGGLE_USERNAME=secretref:kaggle-username" "KAGGLE_KEY=secretref:kaggle-key"
 
 # Trigger initial load
 az containerapp job start --name job-eatosphere-etl --resource-group $RG
@@ -177,7 +180,7 @@ $BACKEND_FQDN = az containerapp create `
   --image "$ACR.azurecr.io/backend:latest" --registry-server "$ACR.azurecr.io" --registry-identity $ID_RES `
   --ingress external --target-port 8000 --cpu 0.5 --memory 1.0Gi --min-replicas 0 --max-replicas 2 `
   --secrets "mysql-app-password=keyvaultref:$KV_URL/secrets/mysql-app-password,identityref:$ID_RES" "hf-api-key=keyvaultref:$KV_URL/secrets/hf-api-key,identityref:$ID_RES" `
-  --env-vars "APP_ENV=production" "MYSQL_HOST=mysql-eatosphere-2611.mysql.database.azure.com" "MYSQL_PORT=3306" "MYSQL_DATABASE=global_restaurant_explorer" "MYSQL_TLS_ENABLED=TRUE" "MYSQL_APP_USER=explorer_app" "BACKEND_ALLOW_CSV_FALLBACK_IN_LOCAL=false" "BACKEND_CORS_ORIGINS=https://placeholder.invalid" "MYSQL_APP_PASSWORD=secretref:mysql-app-password" "HF_API_KEY=secretref:hf-api-key" `
+  --env-vars "APP_ENV=production" "MYSQL_HOST=$MYSQL_HOST" "MYSQL_PORT=3306" "MYSQL_DATABASE=global_restaurant_explorer" "MYSQL_TLS_ENABLED=TRUE" "MYSQL_APP_USER=explorer_app" "BACKEND_ALLOW_CSV_FALLBACK_IN_LOCAL=false" "BACKEND_CORS_ORIGINS=https://placeholder.invalid" "MYSQL_APP_PASSWORD=secretref:mysql-app-password" "HF_API_KEY=secretref:hf-api-key" `
   --query "properties.configuration.ingress.fqdn" -o tsv
 
 # 2. Deploy Streamlit Frontend (zero DB credentials)
@@ -190,7 +193,7 @@ $ST_FQDN = az containerapp create `
 
 # 3. Wire exact CORS origin and remove temporary deployer MySQL firewall rule
 az containerapp update --name ca-eatosphere-backend --resource-group $RG --set-env-vars "BACKEND_CORS_ORIGINS=https://$ST_FQDN"
-az mysql flexible-server firewall-rule delete --resource-group $RG --name mysql-eatosphere-2611 --rule-name AllowDeployerIP --yes
+az mysql flexible-server firewall-rule delete --resource-group $RG --name $MYSQL --rule-name AllowDeployerIP --yes
 ```
 
 ---
@@ -226,24 +229,90 @@ sequenceDiagram
 
 ---
 
-## 4. Common Errors Encountered & Exact Fixes
+## 4. Track C: Manual Web UI Workflow (Azure Portal + GitHub Web UI)
+
+If you prefer not to run CLI scripts, every step in Track A maps directly to the [Azure Portal (`portal.azure.com`)](https://portal.azure.com) and GitHub Web UI:
+
+### 4.1 Step 1 — Check Allowed Regions & Create Resource Group
+1. In Azure Portal, open **Policy** → **Authoring > Assignments** → inspect **Allowed resource deployment regions** to see which regions your subscription permits (e.g., `Poland Central`).
+2. Open **Resource groups** → **+ Create** → name it `rg-eatosphere-prod`, select your allowed region → **Review + create**.  
+   *(Docs: [Manage Azure resource groups via Portal](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal))*
+
+### 4.2 Step 2 — Provision Foundation Resources in `rg-eatosphere-prod`
+1. **Azure Container Registry:** Search **Container registries** → **+ Create** → Registry name `acreatosphere<suffix>`, SKU **`Basic`**, keep **Admin user** disabled → **Create**.  
+   *(Docs: [Create an ACR in Azure Portal](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-portal))*
+2. **Storage Account (`bronze` container):** Search **Storage accounts** → **+ Create** → name `steatosphere<suffix>`, Performance `Standard`, Redundancy **`LRS`**, **Advanced** tab: set **Minimum TLS version** to `Version 1.2` and disable **Allow enabling anonymous access on individual containers** → **Create**. Once deployed, open **Data storage > Containers** → **+ Container** → name it `bronze`. Copy the connection string from **Security + networking > Access keys**.  
+   *(Docs: [Create a storage account](https://learn.microsoft.com/en-us/azure/storage/common/storage-account-create))*
+3. **Key Vault (RBAC):** Search **Key vaults** → **+ Create** → name `kv-eatosphere-<suffix>`, Pricing tier `Standard`, **Access configuration**: select **`Azure role-based access control (recommended)`** → **Create**.
+   - Open the Key Vault → **Access control (IAM)** → **+ Add > Add role assignment** → assign **`Key Vault Secrets Officer`** to your own Azure user.
+   - Open **Objects > Secrets** → **+ Generate/Import** to create all 7 secrets: `mysql-admin-password`, `mysql-pipeline-password`, `mysql-app-password`, `azure-storage-connection-string`, `kaggle-username`, `kaggle-key`, and `hf-api-key`.  
+   *(Docs: [Quickstart: Set and retrieve a secret from Key Vault](https://learn.microsoft.com/en-us/azure/key-vault/secrets/quick-create-portal))*
+4. **User-Assigned Managed Identity:** Search **Managed Identities** → **+ Create** → name `id-eatosphere-prod` in `rg-eatosphere-prod` → **Create**.
+   - Open your **ACR** → **Access control (IAM)** → assign **`AcrPull`** and **`AcrPush`** to `id-eatosphere-prod`.
+   - Open your **Key Vault** → **Access control (IAM)** → assign **`Key Vault Secrets User`** to `id-eatosphere-prod`.
+
+### 4.3 Step 3 — Build & Push Container Images via GitHub Web UI
+1. In Azure Portal, open **Managed Identities** → `id-eatosphere-prod` → **Settings > Federated credentials** → **+ Add Credential** → Scenario: **`GitHub Actions deploying Azure resources`** → enter your GitHub Organization/User, Repository name, Entity type **`Branch`**, Branch name **`main`** → **Add**.  
+   *(Docs: [Configure a federated identity credential for GitHub Actions](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-create-trust-user-assigned-managed-identity))*
+2. In your GitHub repository web page, open **Settings > Secrets and variables > Actions**:
+   - Under **Secrets**, add `AZURE_CLIENT_ID` (from `id-eatosphere-prod` Overview), `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
+   - Under **Variables**, add `ACR_NAME` set to `acreatosphere<suffix>`.
+3. Open the GitHub **Actions** tab → select **Build and Push Images to ACR** → click **Run workflow** → wait ~2 minutes until `backend`, `streamlit`, and `pipeline` show green checkmarks.
+
+### 4.4 Step 4 — Provision & Initialize MySQL Flexible Server
+1. Search **Azure Database for MySQL flexible servers** → **+ Create** → **Flexible server**:
+   - Name: `mysql-eatosphere-<suffix>`, Region: same as RG, Version: `8.0`, Compute + storage: **Configure server** → **`Burstable`**, **`Standard_B1ms`**, `20 GiB`.
+   - Admin username: `eatoadmin`, Password: paste your `mysql-admin-password` secret.
+   - **Networking** tab: select **Public access**, check **`Allow public access from any Azure service within Azure to this server`**, and click **`+ Add current client IP address`**.
+   - Click **Review + create**.  
+   *(Docs: [Quickstart: Create MySQL Flexible Server in Portal](https://learn.microsoft.com/en-us/azure/mysql/flexible-server/quickstart-create-server-portal))*
+2. Using MySQL Workbench, DBeaver, or Azure Cloud Shell over **SSL/TLS required**:
+   - Connect as `eatoadmin` and execute [`sql/001_create_tables.sql`](../sql/001_create_tables.sql), then create `explorer_pipeline`@`%` (write + DDL/views) and `explorer_app`@`%` (`SELECT` only).
+   - Connect as `explorer_pipeline` and execute [`sql/002_create_gold_views.sql`](../sql/002_create_gold_views.sql).
+
+### 4.5 Step 5 — Create Container Apps Environment, ETL Job, Backend & Streamlit
+1. **Container Apps Environment:** Search **Container Apps Environments** → **+ Create** → name `cae-eatosphere-prod`, ensure **Workload profiles** (Consumption) is selected (do **not** use Express mode) → **Create**.
+2. **Weekly ETL Job (`job-eatosphere-etl`):** Search **Container Apps Jobs** → **+ Create**:
+   - Environment: `cae-eatosphere-prod`, Trigger type: **`Schedule`**, Cron expression: `0 3 * * 0`.
+   - **Container** tab: Image source `Azure Container Registry`, pick `acreatosphere<suffix>` / `pipeline:latest`, Authentication: Managed Identity (`id-eatosphere-prod`), CPU `0.5`, Memory `1 Gi`.
+   - After creation, open **Settings > Identity > User assigned** → add `id-eatosphere-prod`; under **Settings > Secrets**, add Key Vault references for `mysql-pipeline-password`, `azure-storage-connection-string`, `kaggle-username`, `kaggle-key`; under **Application > Containers**, add the environment variables from Track A Step 4.
+   - Click **`Run now`** on the job's Overview blade to load the initial `9,551` restaurants into Azure MySQL and upload Bronze to `steatosphere<suffix>/bronze`.  
+   *(Docs: [Create a job in Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/jobs-get-started-portal))*
+3. **FastAPI Backend (`ca-eatosphere-backend`):** Search **Container Apps** → **+ Create**:
+   - Environment: `cae-eatosphere-prod`, Image: `acreatosphere<suffix>.azurecr.io/backend:latest` (Managed Identity `id-eatosphere-prod`), CPU `0.5`, Memory `1 Gi`.
+   - **Ingress** tab: Enable **Ingress**, select **Accepting traffic from anywhere**, Target port **`8000`**.
+   - After creation, configure **Settings > Secrets** (Key Vault refs `mysql-app-password`, `hf-api-key`), **Application > Scale** (`Min 0`, `Max 2`), and **Application > Containers** env vars (`APP_ENV=production`, `MYSQL_TLS_ENABLED=TRUE`, `BACKEND_ALLOW_CSV_FALLBACK_IN_LOCAL=false`, etc.).
+   - Copy the **Application Url** (`https://<your-backend-fqdn>`) from the Overview blade and verify `/api/health` returns `{"status":"ok"}`.
+4. **Streamlit Frontend (`ca-eatosphere-streamlit`):** Search **Container Apps** → **+ Create**:
+   - Environment: `cae-eatosphere-prod`, Image: `acreatosphere<suffix>.azurecr.io/streamlit:latest` (Managed Identity `id-eatosphere-prod`), CPU `0.5`, Memory `1 Gi`.
+   - **Ingress** tab: Enable **Ingress**, **Accepting traffic from anywhere**, Target port **`8501`**.
+   - **Scale:** `Min 0`, `Max 1`.
+   - **Environment variables:** Add **ONLY** `STREAMLIT_BACKEND_URL=https://<your-backend-fqdn>` and `STREAMLIT_API_TIMEOUT_SECONDS=30` (zero DB credentials or Key Vault secrets).
+   - Copy the **Application Url** (`https://<your-streamlit-fqdn>`).
+5. **Finalize Security:**
+   - Open `ca-eatosphere-backend` → **Application > Containers > Edit and deploy** → set `BACKEND_CORS_ORIGINS` to `https://<your-streamlit-fqdn>`.
+   - Open `mysql-eatosphere-<suffix>` → **Settings > Networking** → delete your temporary client IP firewall rule so only Azure services can reach MySQL.
+
+---
+
+## 5. Common Errors Encountered & Exact Fixes
 
 | Error / Code | Where It Occurs | Root Cause | Exact Fix |
 | --- | --- | --- | --- |
-| `RequestDisallowedByAzure` | `az acr create` / resource creation | `Azure for Students` policy restricts allowed regions | Run `az policy assignment list` to find allowed regions (e.g., `polandcentral`) and deploy there |
+| `RequestDisallowedByAzure` | `az acr create` / Portal deployment | `Azure for Students` policy restricts allowed regions | Check **Policy > Assignments** (or `az policy assignment list`) and deploy in an allowed region (e.g., `polandcentral`) |
 | `TasksOperationsNotAllowed` | `az acr build` | ACR Tasks are disabled on `Azure for Students` | Build and push via GitHub Actions OIDC ([`.github/workflows/build-push-acr.yml`](../.github/workflows/build-push-acr.yml)) |
 | `AADSTS700213: No matching federated identity record` | `azure/login@v2` in GitHub Actions | GitHub OIDC `sub` includes `@<owner_id>` and `@<repo_id>` | Set federated credential `--subject` to the exact `sub` reported in the error (`repo:<owner>@<id>/<repo>@<id>:ref:refs/heads/<branch>`) |
-| `ExpressEnvironmentResourceNotSupported` / `ExpressKeyVaultSecretsNotSupported` | `az containerapp job create` / `az containerapp create` | Preview `containerapp` CLI defaults `env create` to `Express` mode | Recreate environment with `--environment-mode WorkloadProfiles` |
+| `ExpressEnvironmentResourceNotSupported` / `ExpressKeyVaultSecretsNotSupported` | `az containerapp job create` / `az containerapp create` | Preview `containerapp` CLI defaults `env create` to `Express` mode | Recreate environment with `--environment-mode WorkloadProfiles` (or select Workload profiles in Portal) |
 | `Secret "<app>--msi" not found` | `az containerapp create` with Key Vault refs | Passing both `--registry-identity` and `--user-assigned` for the same identity causes an identity conflict | Pass `--registry-identity $ID_RES` only (or `--mi-user-assigned` on jobs) |
 | `ModuleNotFoundError: No module named 'six'` | `job-eatosphere-etl` execution | `kaggle` 1.x has an undeclared runtime dependency on `six` | Pinned `six>=1.16.0,<2.0.0` in [`pipeline/requirements.txt`](../pipeline/requirements.txt) |
-| `SSL connection error` / TLS handshake rejected | PyMySQL -> Azure MySQL Flexible Server | Passing `{}` or `{"ssl_mode": "REQUIRED"}` skips cert verification in PyMySQL | Use `ssl.create_default_context()` when `mysql_tls_enabled=True` |
+| `SSL connection error` / TLS handshake rejected | PyMySQL → Azure MySQL Flexible Server | Passing `{}` or `{"ssl_mode": "REQUIRED"}` skips cert verification in PyMySQL | Use `ssl.create_default_context()` when `mysql_tls_enabled=True` |
 | `Access denied; you need SUPER or SET_USER_ID` | `sql/002_create_gold_views.sql` | Standard `CREATE OR REPLACE VIEW` defaults to `DEFINER` privilege checks | Use `CREATE OR REPLACE SQL SECURITY INVOKER VIEW` on all Gold views |
 | `ValueError: ... must not be empty or a placeholder in production` | Backend startup with `APP_ENV=production` | `validate_production_secrets` blocks `replace_with_*` or empty secrets | Populate real values in Key Vault (`mysql-app-password`, `hf-api-key`) |
 | `Could not find DevToolsActivePort for chrome` | `browser` subagent E2E check | Chrome is closed or remote debugging is disabled | Open Chrome and enable `chrome://inspect/#remote-debugging`, then re-run |
 
 ---
 
-## 5. Estimated Monthly Cost & Teardown
+## 6. Estimated Monthly Cost & Teardown
 
 | Azure Service | Tier / Sizing | Est. Monthly Cost |
 | --- | --- | --- |
@@ -254,7 +323,5 @@ sequenceDiagram
 | **Total** | | **~\$5–\$21/month** (well within \$100 credit) |
 
 To delete all Azure resources and stop all billing:
-
-```powershell
-az group delete --name rg-eatosphere-prod --yes --no-wait
-```
+- **CLI:** `az group delete --name rg-eatosphere-prod --yes --no-wait`
+- **Portal:** Open **Resource groups** → `rg-eatosphere-prod` → **Delete resource group**
