@@ -116,6 +116,7 @@ def test_settings(sample_csv_files: tuple[Path, Path]) -> BackendSettings:
         mysql_app_user="test_user",
         mysql_app_password=SecretStr("test_fixture_val"),
         hf_api_key=SecretStr("replace_with_test_key"),
+        nlp_semantic_enabled=False,
         backend_allow_csv_fallback_in_local=True,
         backend_local_fallback_csv_path=str(csv_path),
         cuisine_map_path=cuisine_map_path,

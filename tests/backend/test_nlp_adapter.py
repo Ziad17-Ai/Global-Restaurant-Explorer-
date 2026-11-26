@@ -265,3 +265,86 @@ def test_search_service_falls_back_and_truncates_logged_query(
     logged_preview = info_records[-1].query_preview
     assert len(logged_preview) == QUERY_LOG_MAX_CHARS
     assert logged_preview == long_query[:QUERY_LOG_MAX_CHARS]
+
+
+class _FakeSemanticMatcher:
+    """Offline semantic matcher stub for unit tests."""
+
+    def is_ready(self) -> bool:
+        return True
+
+    def match_cuisines(self, query: str, top_k: int = 2) -> list[str]:
+        q_lower = query.lower()
+        if "tacos" in q_lower:
+            return ["Mexican"][:top_k]
+        if "spicy curry" in q_lower:
+            return ["North Indian"][:top_k]
+        return []
+
+    def match_price_range(self, query: str) -> int | None:
+        if "romantic fancy" in query.lower():
+            return 4
+        return None
+
+
+def test_semantic_hybrid_parser_aliases_typos_and_service_label(
+    sample_vocabulary: VocabularySnapshot,
+    test_settings: BackendSettings,
+) -> None:
+    from web.backend.repositories.meta_repository import MetaRepository
+    from web.backend.repositories.restaurant_repository import RestaurantRepository
+
+    extended_vocab = VocabularySnapshot(
+        countries=sample_vocabulary.countries,
+        cities=tuple(
+            dict.fromkeys([*sample_vocabulary.cities, "Mumbai", "Singapore", "Dubai"])
+        ),
+        localities=sample_vocabulary.localities,
+        cuisines=tuple(
+            dict.fromkeys([*sample_vocabulary.cuisines, "Mexican", "North Indian"])
+        ),
+        cuisine_groups=sample_vocabulary.cuisine_groups,
+        cuisine_synonyms=sample_vocabulary.cuisine_synonyms,
+    )
+    hybrid = RuleBasedParser(
+        extended_vocab,
+        semantic_matcher=_FakeSemanticMatcher(),
+    )
+
+    bombay = hybrid.parse("Italian in Bombay")
+    assert bombay.city == "Mumbai"
+    assert bombay.cuisine == ["Italian"]
+
+    typo_london = hybrid.parse("tacos in Londn")
+    assert typo_london.city == "London"
+    assert typo_london.cuisine == ["Mexican"]
+
+    vibe = hybrid.parse("romantic fancy dinner in Dubai")
+    assert vibe.city == "Dubai"
+    assert vibe.price_range == 4
+
+    still_unknown = hybrid.parse("best sushi in Cairo")
+    assert still_unknown.needs_clarification is not None
+
+    def failing_completion(**_kwargs: object) -> str:
+        raise TimeoutError("HF timed out")
+
+    hf_adapter = HuggingFaceAdapter(
+        vocabulary=extended_vocab,
+        app_settings=test_settings,
+        completion_fn=failing_completion,
+    )
+    service = SearchService(
+        restaurant_repository=RestaurantRepository(None, test_settings),
+        meta_repository=MetaRepository(None, test_settings),
+        rate_limiter=SlidingWindowRateLimiter(max_requests=30),
+        app_settings=test_settings,
+        primary_adapter=hf_adapter,
+        fallback_adapter=hybrid,
+    )
+    response = service.search_natural_language(
+        NLSearchRequest(query="Italian in Bombay", limit=10, offset=0),
+        client_key="127.0.0.1",
+    )
+    assert response.parser_used == "huggingface_semantic"
+    assert response.fallback_used is True

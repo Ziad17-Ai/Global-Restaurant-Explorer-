@@ -397,6 +397,34 @@ def test_nl_search_displays_interpreted_params_fallback_and_clarification() -> N
     assert "rule-based parser" in caption_blob
 
 
+def test_nl_search_displays_hf_semantic_caption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify NL Search renders the HF local ONNX semantic parser caption."""
+
+    class SemanticStubClient(StubAPIClient):
+        def search_nl(
+            self,
+            query: str,
+            *,
+            limit: int = 20,
+            offset: int = 0,
+        ) -> NLSearchResponse:
+            resp = super().search_nl(query, limit=limit, offset=offset)
+            resp["parser_used"] = "huggingface_semantic"
+            resp["fallback_used"] = True
+            resp["interpreted_params"]["needs_clarification"] = None
+            return resp
+
+    monkeypatch.setattr(api_client, "get_api_client", lambda: SemanticStubClient())
+    at = AppTest.from_file(str(PAGES_DIR / "nl_search.py"), default_timeout=15).run()
+    at.text_input[0].set_value("spicy curry in London")
+    at.form_submit_button[0].click().run()
+    assert not at.exception
+    caption_blob = "\n".join(el.value for el in at.caption)
+    assert "all-MiniLM-L6-v2 ONNX" in caption_blob
+
+
 def test_journey_compare_renders_seeded_itinerary_and_compare() -> None:
     """Verify seeded Compare and Journey Planner states compute legs without errors."""
     items = _sample_restaurants()

@@ -103,7 +103,7 @@ Everyone contributes to documentation and testing.
 | ---- | ---------- | ----- | ------------------- | ---------- |
 | S1 | Which additional source(s) and geographic data for Increment 2? | Increment 2 | Rows and category completeness for target cities (including Egypt), valid coordinates, license, ingestion effort | Deliver Increment 1 cleanly on Zomato; Overture Maps first candidate |
 | S2 | Airflow: local Docker only, or Azure VM too? | Local by 18 Nov; VM decision 21 Nov | Setup time, reliability, cost, demo value | Airflow in Docker for the demo; scripts stay scheduler-agnostic |
-| S3 | Which Hugging Face model and provider? | 18 Nov | Correct extraction rate on 30-50 sample queries, JSON reliability, <5s latency, free-tier limits | Rule-based parser using the controlled vocabulary |
+| S3 | Which Hugging Face model and provider? | Closed (26 Nov) | Correct extraction rate on 30-50 sample queries, JSON reliability, <5s latency, free-tier limits | **Closed:** Local `sentence-transformers/all-MiniLM-L6-v2` ONNX semantic hybrid (`30/30` = `100.0%`, `P95=89.7ms`, `+185.7 MB RSS`) always-on at \$0; `HuggingFaceAdapter` (`Qwen/Qwen3-32B`, `provider="auto"`) ready for free custom provider keys (Groq/Cerebras) |
 | S4 | Azure access, credits, and cost | Sprint 1 | Working subscriptions, MySQL Flexible Server + App Service cost, budget alerts set | Local MySQL and Docker for the demo; document the limitation |
 
 **S3 method:** write the sample queries and expected parameters first, then score each candidate model on them. Choose on measured results.
