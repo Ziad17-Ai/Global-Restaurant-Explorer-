@@ -54,6 +54,7 @@ class NLSearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=MAX_NLP_INPUT_CHARS)
     limit: int = Field(default=DEFAULT_PAGE_LIMIT, ge=MIN_PAGE_LIMIT, le=MAX_PAGE_LIMIT)
     offset: int = Field(default=0, ge=0)
+    previous_params: SearchParams | None = None
 
     @field_validator("query")
     @classmethod

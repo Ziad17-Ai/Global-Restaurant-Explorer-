@@ -345,7 +345,7 @@ class APIClient:
         path: str,
         *,
         params: dict[str, str | int | float | bool | list[str]] | None = None,
-        json_body: dict[str, str | int] | None = None,
+        json_body: dict[str, object] | None = None,
     ) -> object:
         try:
             response = self._client.request(
@@ -483,14 +483,14 @@ class APIClient:
         *,
         limit: int = DEFAULT_PAGE_LIMIT,
         offset: int = 0,
+        previous_params: SearchParamsPayload | None = None,
     ) -> NLSearchResponse:
         """Run a constrained natural-language search against `POST /api/search/nl`."""
         logger.info("Submitting NL search query=%s", truncate_query_for_log(query))
-        payload = self._request_json(
-            "POST",
-            "/api/search/nl",
-            json_body={"query": query, "limit": limit, "offset": offset},
-        )
+        body: dict[str, object] = {"query": query, "limit": limit, "offset": offset}
+        if previous_params is not None:
+            body["previous_params"] = previous_params
+        payload = self._request_json("POST", "/api/search/nl", json_body=body)
         return self._validate(_NL_SEARCH_ADAPTER, payload)
 
     def list_countries(self) -> CountriesResponse:

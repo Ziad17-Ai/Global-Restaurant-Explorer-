@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Literal
 
 from web.backend.constants import QUERY_LOG_MAX_CHARS
@@ -29,6 +30,102 @@ from web.backend.services.rate_limiter import SlidingWindowRateLimiter
 from web.backend.settings import BackendSettings, settings
 
 logger = logging.getLogger(__name__)
+
+_RESET_CONTEXT_PATTERN = re.compile(
+    r"\b(?:start\s+over|reset|new\s+search|clear\s+filters?)\b",
+    flags=re.IGNORECASE,
+)
+
+
+def merge_followup_params(
+    previous: SearchParams,
+    current: SearchParams,
+    query: str,
+) -> SearchParams:
+    """Merge follow-up SearchParams onto previous active search context."""
+    if current.needs_clarification is not None or _RESET_CONTEXT_PATTERN.search(query):
+        return current
+
+    country = previous.country
+    city = previous.city
+    locality = previous.locality
+
+    if current.country is not None:
+        if previous.country and current.country.lower() != previous.country.lower():
+            city = None
+            locality = None
+        country = current.country
+
+    if current.city is not None:
+        if previous.city and current.city.lower() != previous.city.lower():
+            locality = None
+        if current.country is None:
+            country = None
+        city = current.city
+
+    if current.locality is not None:
+        locality = current.locality
+
+    if current.cuisine:
+        cuisine = list(current.cuisine)
+        cuisine_group = None
+    elif current.cuisine_group is not None:
+        cuisine = []
+        cuisine_group = current.cuisine_group
+    else:
+        cuisine = list(previous.cuisine)
+        cuisine_group = previous.cuisine_group
+
+    if current.max_cost_usd is not None:
+        max_cost_usd: float | None = current.max_cost_usd
+        max_cost_for_two: float | None = None
+    elif current.max_cost_for_two is not None:
+        max_cost_usd = None
+        max_cost_for_two = current.max_cost_for_two
+    else:
+        max_cost_usd = previous.max_cost_usd
+        max_cost_for_two = previous.max_cost_for_two
+
+    return SearchParams(
+        country=country,
+        city=city,
+        locality=locality,
+        cuisine=cuisine,
+        cuisine_group=cuisine_group,
+        min_rating=(
+            current.min_rating
+            if current.min_rating is not None
+            else previous.min_rating
+        ),
+        min_cost_for_two=(
+            current.min_cost_for_two
+            if current.min_cost_for_two is not None
+            else previous.min_cost_for_two
+        ),
+        max_cost_for_two=max_cost_for_two,
+        max_cost_usd=max_cost_usd,
+        price_range=(
+            current.price_range
+            if current.price_range is not None
+            else previous.price_range
+        ),
+        has_online_delivery=(
+            current.has_online_delivery
+            if current.has_online_delivery is not None
+            else previous.has_online_delivery
+        ),
+        has_table_booking=(
+            current.has_table_booking
+            if current.has_table_booking is not None
+            else previous.has_table_booking
+        ),
+        search_query=(
+            current.search_query
+            if current.search_query is not None
+            else previous.search_query
+        ),
+        needs_clarification=None,
+    )
 
 
 class SearchService:
@@ -128,6 +225,13 @@ class SearchService:
                 "query_preview": truncated_query,
             },
         )
+
+        if request_payload.previous_params is not None:
+            interpreted_params = merge_followup_params(
+                request_payload.previous_params,
+                interpreted_params,
+                request_payload.query,
+            )
 
         if interpreted_params.needs_clarification is not None:
             return NLSearchResponseOut(

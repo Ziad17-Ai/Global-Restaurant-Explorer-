@@ -78,25 +78,70 @@ with st.container(horizontal=True):
             icon=":material/bolt:",
         ):
             st.session_state["nl_last_query"] = sample_query
+            st.session_state["nl_active_params"] = None
+            st.session_state["nl_history"] = []
             try:
                 with st.spinner("Interpreting query..."):
-                    st.session_state["nl_last_response"] = get_api_client().search_nl(
+                    resp = get_api_client().search_nl(
                         query=sample_query,
                         limit=DEFAULT_PAGE_LIMIT,
                         offset=0,
                     )
+                    st.session_state["nl_last_response"] = resp
+                    if not resp["interpreted_params"].get("needs_clarification"):
+                        st.session_state["nl_active_params"] = resp[
+                            "interpreted_params"
+                        ]
+                        st.session_state["nl_history"] = [sample_query]
+                        st.rerun()
             except APIError as exc:
                 render_api_error(exc)
 
+nl_history: list[str] = list(st.session_state.get("nl_history") or [])
+active_params: SearchParamsPayload | None = st.session_state.get("nl_active_params")
+if nl_history and active_params is not None:
+    ctx_col, reset_col = st.columns([4, 1], vertical_alignment="center")
+    with ctx_col:
+        trail = " -> ".join(
+            f"{i + 1}. {escape_markdown(step)}" for i, step in enumerate(nl_history)
+        )
+        st.caption(f"Follow-up context active: {trail}")
+    with reset_col:
+        if st.button(
+            "New search",
+            key="nl_reset_context",
+            icon=":material/restart_alt:",
+            width="stretch",
+        ):
+            st.session_state["nl_active_params"] = None
+            st.session_state["nl_history"] = []
+            st.session_state["nl_last_query"] = ""
+            st.session_state["nl_last_response"] = None
+            st.rerun()
+
 with st.form("nl_search_form"):
+    prompt_label = (
+        "Follow-up refinement prompt (refines active filters above)"
+        if active_params is not None
+        else "Dining search prompt"
+    )
+    prompt_placeholder = (
+        "e.g., in New Delhi, rated above 4.2, with online delivery"
+        if active_params is not None
+        else "e.g., affordable Italian in New Delhi rated above 4"
+    )
     query_input = st.text_input(
-        "Dining search prompt",
-        value=str(st.session_state.get("nl_last_query") or ""),
+        prompt_label,
+        value=""
+        if active_params is not None
+        else str(st.session_state.get("nl_last_query") or ""),
         max_chars=MAX_NLP_INPUT_CHARS,
-        placeholder="e.g., affordable Italian in New Delhi rated above 4",
+        placeholder=prompt_placeholder,
     )
     submitted = st.form_submit_button(
-        "Search with natural language",
+        "Refine search"
+        if active_params is not None
+        else "Search with natural language",
         type="primary",
         icon=":material/search:",
         width="stretch",
@@ -114,11 +159,17 @@ if submitted:
         st.session_state["nl_last_query"] = cleaned
         try:
             with st.spinner("Interpreting natural-language filters..."):
-                st.session_state["nl_last_response"] = get_api_client().search_nl(
+                resp = get_api_client().search_nl(
                     query=cleaned,
                     limit=DEFAULT_PAGE_LIMIT,
                     offset=0,
+                    previous_params=active_params,
                 )
+                st.session_state["nl_last_response"] = resp
+                if not resp["interpreted_params"].get("needs_clarification"):
+                    st.session_state["nl_active_params"] = resp["interpreted_params"]
+                    st.session_state["nl_history"] = [*nl_history, cleaned]
+                    st.rerun()
         except APIError as exc:
             render_api_error(exc)
 

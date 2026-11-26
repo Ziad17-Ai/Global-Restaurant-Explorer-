@@ -39,6 +39,10 @@ def ensure_session_state() -> None:
         st.session_state["nl_last_query"] = ""
     if "nl_last_response" not in st.session_state:
         st.session_state["nl_last_response"] = None
+    if "nl_active_params" not in st.session_state:
+        st.session_state["nl_active_params"] = None
+    if "nl_history" not in st.session_state:
+        st.session_state["nl_history"] = []
 
 
 def toggle_saved_restaurant(restaurant: RestaurantItem) -> None:
