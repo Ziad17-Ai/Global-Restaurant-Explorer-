@@ -273,12 +273,17 @@ class _FakeSemanticMatcher:
     def is_ready(self) -> bool:
         return True
 
+    def is_off_topic(self, query: str) -> bool:
+        return "weather" in query.lower() or "laptops" in query.lower()
+
     def match_cuisines(self, query: str, top_k: int = 2) -> list[str]:
         q_lower = query.lower()
         if "tacos" in q_lower:
             return ["Mexican"][:top_k]
         if "spicy curry" in q_lower:
             return ["North Indian"][:top_k]
+        if "dinner" in q_lower:
+            return ["Diner"][:top_k]
         return []
 
     def match_price_range(self, query: str) -> int | None:
@@ -348,3 +353,112 @@ def test_semantic_hybrid_parser_aliases_typos_and_service_label(
     )
     assert response.parser_used == "huggingface_semantic"
     assert response.fallback_used is True
+
+
+def test_off_topic_guardrails_and_filler_stripping(
+    sample_vocabulary: VocabularySnapshot,
+) -> None:
+    extended_vocab = VocabularySnapshot(
+        countries=sample_vocabulary.countries,
+        cities=tuple(dict.fromkeys([*sample_vocabulary.cities, "Dubai"])),
+        localities=sample_vocabulary.localities,
+        cuisines=tuple(dict.fromkeys([*sample_vocabulary.cuisines, "Diner"])),
+        cuisine_groups=sample_vocabulary.cuisine_groups,
+        cuisine_synonyms=sample_vocabulary.cuisine_synonyms,
+    )
+    hybrid = RuleBasedParser(extended_vocab, semantic_matcher=_FakeSemanticMatcher())
+
+    laptops = hybrid.parse("cheap laptops under $500")
+    assert laptops.needs_clarification is not None
+    assert laptops.price_range is None
+
+    hotels = hybrid.parse("hotels in London rated above 4")
+    assert hotels.needs_clarification is not None
+    assert hotels.city is None
+
+    mars = hybrid.parse("best restaurants on Mars")
+    assert mars.needs_clarification is not None
+    assert "Mars" in mars.needs_clarification
+
+    romantic = hybrid.parse("romantic fancy dinner in Dubai")
+    assert romantic.city == "Dubai"
+    assert romantic.price_range == 4
+    assert romantic.cuisine == []
+
+
+def test_followup_refinement_merges_and_pivots_context(
+    sample_vocabulary: VocabularySnapshot,
+    test_settings: BackendSettings,
+) -> None:
+    from web.backend.repositories.meta_repository import MetaRepository
+    from web.backend.repositories.restaurant_repository import RestaurantRepository
+    from web.backend.services.search_service import merge_followup_params
+
+    parser = RuleBasedParser(sample_vocabulary)
+    t1 = parser.parse("restaurants in India")
+    assert t1.country == "India"
+
+    t2 = merge_followup_params(t1, parser.parse("in New Delhi"), "in New Delhi")
+    assert t2.city == "New Delhi"
+    assert t2.country is None
+
+    t3 = merge_followup_params(
+        t2,
+        parser.parse("Italian rated above 4.2"),
+        "Italian rated above 4.2",
+    )
+    assert t3.city == "New Delhi"
+    assert t3.cuisine == ["Italian"]
+    assert t3.min_rating == 4.2
+
+    t4 = merge_followup_params(
+        t3,
+        parser.parse("with online delivery"),
+        "with online delivery",
+    )
+    assert t4.city == "New Delhi"
+    assert t4.cuisine == ["Italian"]
+    assert t4.min_rating == 4.2
+    assert t4.has_online_delivery is True
+
+    t5 = merge_followup_params(
+        t4,
+        parser.parse("what about in London?"),
+        "what about in London?",
+    )
+    assert t5.city == "London"
+    assert t5.cuisine == ["Italian"]
+    assert t5.min_rating == 4.2
+
+    off_topic = merge_followup_params(
+        t5,
+        parser.parse("hotels in London rated above 4"),
+        "hotels in London rated above 4",
+    )
+    assert off_topic.needs_clarification is not None
+
+    service = SearchService(
+        restaurant_repository=RestaurantRepository(None, test_settings),
+        meta_repository=MetaRepository(None, test_settings),
+        rate_limiter=SlidingWindowRateLimiter(max_requests=30),
+        app_settings=test_settings,
+        primary_adapter=parser,
+        fallback_adapter=parser,
+    )
+    turn1_resp = service.search_natural_language(
+        NLSearchRequest(query="restaurants in India", limit=10, offset=0),
+        client_key="127.0.0.1",
+    )
+    assert turn1_resp.interpreted_params.country == "India"
+    turn2_resp = service.search_natural_language(
+        NLSearchRequest(
+            query="Italian in New Delhi above 4.2",
+            limit=10,
+            offset=0,
+            previous_params=turn1_resp.interpreted_params,
+        ),
+        client_key="127.0.0.1",
+    )
+    assert turn2_resp.interpreted_params.city == "New Delhi"
+    assert turn2_resp.interpreted_params.cuisine == ["Italian"]
+    assert turn2_resp.total == 1

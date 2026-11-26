@@ -169,7 +169,9 @@ class StubAPIClient:
         *,
         limit: int = 20,
         offset: int = 0,
+        previous_params: object = None,
     ) -> NLSearchResponse:
+        _ = previous_params
         return {
             "query": query,
             "interpreted_params": {
@@ -403,26 +405,45 @@ def test_nl_search_displays_hf_semantic_caption(
     """Verify NL Search renders the HF local ONNX semantic parser caption."""
 
     class SemanticStubClient(StubAPIClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.received_previous: list[object] = []
+
         def search_nl(
             self,
             query: str,
             *,
             limit: int = 20,
             offset: int = 0,
+            previous_params: object = None,
         ) -> NLSearchResponse:
-            resp = super().search_nl(query, limit=limit, offset=offset)
+            self.received_previous.append(previous_params)
+            resp = super().search_nl(
+                query,
+                limit=limit,
+                offset=offset,
+                previous_params=previous_params,
+            )
             resp["parser_used"] = "huggingface_semantic"
             resp["fallback_used"] = True
             resp["interpreted_params"]["needs_clarification"] = None
             return resp
 
-    monkeypatch.setattr(api_client, "get_api_client", lambda: SemanticStubClient())
+    stub = SemanticStubClient()
+    monkeypatch.setattr(api_client, "get_api_client", lambda: stub)
     at = AppTest.from_file(str(PAGES_DIR / "nl_search.py"), default_timeout=15).run()
     at.text_input[0].set_value("spicy curry in London")
     at.form_submit_button[0].click().run()
     assert not at.exception
     caption_blob = "\n".join(el.value for el in at.caption)
     assert "all-MiniLM-L6-v2 ONNX" in caption_blob
+    assert "Follow-up context active" in caption_blob
+    assert stub.received_previous[-1] is None
+
+    at.text_input[0].set_value("rated above 4.2")
+    at.form_submit_button[0].click().run()
+    assert not at.exception
+    assert stub.received_previous[-1] is not None
 
 
 def test_journey_compare_renders_seeded_itinerary_and_compare() -> None:

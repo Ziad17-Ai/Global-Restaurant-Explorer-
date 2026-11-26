@@ -358,8 +358,9 @@ SearchParams {
 
 - **Adapter interface:** `parse(query) -> SearchParams`, with a Hugging Face `InferenceClient` implementation (`HuggingFaceAdapter`) and a local Hugging Face ONNX semantic hybrid (`HFOnnxSemanticMatcher` using `sentence-transformers/all-MiniLM-L6-v2` + `RuleBasedParser`).
 - **Validation:** output checked against the schema and the vocabulary of known countries, cities, localities, and canonical cuisines. Unknown values are dropped or flagged.
-- **Fallback:** on timeout (`[nlp] timeout_seconds`, 5 seconds), error, `402`/`429`, or invalid output, fall back to the local `all-MiniLM-L6-v2` ONNX semantic hybrid + deterministic rules (or pure regex rules if the ONNX model is unavailable). In the local parser, longer cuisine names take precedence over overlapping shorter ones (e.g., `"North Indian"` vs. `"Indian"`), city aliases/minor typos are normalized, and unknown explicit `in`/`near`/`around <place>` locations return `needs_clarification` instead of unfiltered results.
-- **Clarification:** ambiguous or unsupported requests return a question for the user.
+- **Fallback:** on timeout (`[nlp] timeout_seconds`, 5 seconds), error, `402`/`429`, or invalid output, fall back to the local `all-MiniLM-L6-v2` ONNX semantic hybrid + deterministic rules (or pure regex rules if the ONNX model is unavailable). In the local parser, off-topic non-dining prompts are rejected via a domain gate, longer cuisine names take precedence over overlapping shorter ones (e.g., `"North Indian"` vs. `"Indian"`), city aliases/minor typos are normalized, and unknown explicit `in`/`near`/`around`/`on`/`at <place>` locations return `needs_clarification` instead of unfiltered results.
+- **Clarification:** ambiguous, off-topic, or unsupported-location requests return a question for the user.
+- **Follow-up refinement:** `POST /api/search/nl` accepts optional `previous_params` (`SearchParams`) so multi-turn follow-up prompts (e.g., `"restaurants in India"` -> `"in New Delhi"` -> `"North Indian rated above 4.2"`) merge statelessly onto active filters with clean location-hierarchy overrides and explicit `"New search"` / `"start over"` resets.
 - **Cache:** repeated queries reuse parsed results.
 - **Transparency:** the UI shows the interpreted filters.
 
