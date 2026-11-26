@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import ssl
 import time
 from collections.abc import Generator
 from typing import Protocol
@@ -40,8 +41,8 @@ class DictCursorConnection(Protocol):
 
 def open_mysql_connection(app_settings: BackendSettings) -> DictCursorConnection:
     """Open a single short-lived PyMySQL connection with DictCursor."""
-    ssl_params: dict[str, object] | None = (
-        {"ssl_mode": "REQUIRED"} if app_settings.mysql_tls_enabled else None
+    ssl_params: ssl.SSLContext | None = (
+        ssl.create_default_context() if app_settings.mysql_tls_enabled else None
     )
     timeout = app_settings.database_connect_timeout_seconds
     if can_use_csv_fallback(app_settings):

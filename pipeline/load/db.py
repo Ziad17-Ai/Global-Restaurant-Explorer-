@@ -3,6 +3,7 @@
 import logging
 import re
 import sqlite3
+import ssl
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
@@ -165,7 +166,9 @@ def open_mysql_connection(
     Returns:
         ``MySqlConnectionWrapper`` ready for transactional operations.
     """
-    ssl_arg: dict[str, object] | None = {} if tls_enabled else None
+    ssl_arg: ssl.SSLContext | None = (
+        ssl.create_default_context() if tls_enabled else None
+    )
     raw_conn = pymysql.connect(
         host=host,
         port=port,

@@ -3,7 +3,7 @@
 
 USE global_restaurant_explorer;
 
-CREATE OR REPLACE VIEW gold_restaurant_search AS
+CREATE OR REPLACE SQL SECURITY INVOKER VIEW gold_restaurant_search AS
 SELECT
     r.restaurant_id,
     r.source_restaurant_id,
@@ -76,7 +76,7 @@ GROUP BY
     r.is_delivering_now,
     r.updated_at;
 
-CREATE OR REPLACE VIEW gold_city_cuisine_stats AS
+CREATE OR REPLACE SQL SECURITY INVOKER VIEW gold_city_cuisine_stats AS
 SELECT
     co.country_name,
     ci.city_id,
@@ -101,7 +101,7 @@ GROUP BY
     c.cuisine_name,
     c.cuisine_group;
 
-CREATE OR REPLACE VIEW gold_locality_cost AS
+CREATE OR REPLACE SQL SECURITY INVOKER VIEW gold_locality_cost AS
 SELECT
     co.country_name,
     ci.city_name,
@@ -122,7 +122,7 @@ GROUP BY
     l.location_id,
     l.locality;
 
-CREATE OR REPLACE VIEW gold_rating_distribution AS
+CREATE OR REPLACE SQL SECURITY INVOKER VIEW gold_rating_distribution AS
 SELECT
     COALESCE(r.rating_text, 'Unrated') AS rating_label,
     COUNT(r.restaurant_id) AS restaurant_count,
@@ -131,7 +131,7 @@ SELECT
 FROM restaurants AS r
 GROUP BY COALESCE(r.rating_text, 'Unrated');
 
-CREATE OR REPLACE VIEW gold_geographic_coverage AS
+CREATE OR REPLACE SQL SECURITY INVOKER VIEW gold_geographic_coverage AS
 SELECT
     co.country_name,
     ci.city_name,
