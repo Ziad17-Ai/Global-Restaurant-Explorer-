@@ -45,8 +45,163 @@ logger = logging.getLogger(__name__)
 PROMPT_FILE_PATH = Path(__file__).resolve().parent / "prompts" / "nl_search_prompt.txt"
 
 _MAX_PROMPT_VOCAB_ITEMS = 120
-_MIN_FUZZY_LOCATION_LEN = 4
-_FUZZY_LOCATION_CUTOFF = 0.80
+_MIN_FUZZY_LOCATION_LEN = 5
+_FUZZY_LOCATION_CUTOFF = 0.82
+
+_DINING_DOMAIN_WORDS: frozenset[str] = frozenset(
+    {
+        "restaurant",
+        "restaurants",
+        "food",
+        "eat",
+        "eats",
+        "dining",
+        "dine",
+        "cafe",
+        "bistro",
+        "cuisine",
+        "cuisines",
+        "dish",
+        "dishes",
+        "menu",
+        "meal",
+        "meals",
+        "dinner",
+        "lunch",
+        "breakfast",
+        "brunch",
+    }
+)
+
+_OFF_TOPIC_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "laptop",
+        "laptops",
+        "phone",
+        "phones",
+        "smartphone",
+        "computer",
+        "computers",
+        "headphones",
+        "hotel",
+        "hotels",
+        "hostel",
+        "airbnb",
+        "resort",
+        "flight",
+        "flights",
+        "airline",
+        "weather",
+        "forecast",
+        "python",
+        "javascript",
+        "script",
+        "code",
+        "engine",
+        "mechanic",
+        "joke",
+        "jokes",
+        "movie",
+        "movies",
+        "shoes",
+    }
+)
+
+_SEMANTIC_CUISINE_STOPWORDS: frozenset[str] = frozenset(
+    {
+        "restaurant",
+        "restaurants",
+        "dinner",
+        "lunch",
+        "breakfast",
+        "food",
+        "places",
+        "place",
+        "spots",
+        "spot",
+        "eat",
+        "eats",
+        "dining",
+        "dine",
+        "meal",
+        "meals",
+        "best",
+        "top",
+        "good",
+        "great",
+        "nice",
+        "rated",
+        "rating",
+        "stars",
+        "star",
+        "romantic",
+        "fancy",
+        "luxury",
+        "fine",
+        "cheap",
+        "budget",
+        "affordable",
+        "moderate",
+        "upscale",
+        "pricey",
+        "expensive",
+        "inexpensive",
+        "low",
+        "cost",
+        "price",
+        "tier",
+        "range",
+        "with",
+        "without",
+        "online",
+        "delivery",
+        "delivers",
+        "table",
+        "booking",
+        "reservation",
+        "reservations",
+        "under",
+        "below",
+        "above",
+        "over",
+        "less",
+        "than",
+        "max",
+        "at",
+        "least",
+        "usd",
+        "for",
+        "two",
+        "people",
+        "in",
+        "near",
+        "around",
+        "on",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "some",
+        "any",
+        "somewhere",
+        "me",
+        "find",
+        "show",
+        "want",
+        "looking",
+        "what",
+        "about",
+        "more",
+        "only",
+        "also",
+        "michelin",
+        "tasting",
+        "menu",
+        "quick",
+        "bite",
+    }
+)
 
 _PRICE_KEYWORD_MAP: tuple[tuple[tuple[str, ...], int], ...] = (
     (("cheap", "budget", "inexpensive", "low cost"), PRICE_RANGE_TIER_ONE),
@@ -343,8 +498,20 @@ class RuleBasedParser:
             "any",
             "all",
             "my",
+            "home",
+            "night",
+            "menu",
+            "line",
+            "time",
+            "hand",
+            "site",
+            "offer",
+            "sale",
         }
-        for match in re.finditer(r"\b(?:in|near|around)\s+([^,;?.!]+)", text_lower):
+        for match in re.finditer(
+            r"\b(?:in|near|around|on|at(?!\s+least\b))\s+([^,;?.!]+)",
+            text_lower,
+        ):
             start_offset = match.start(1)
             fragment_lower = match.group(1)
             stop_match = re.search(stop_pattern, fragment_lower)
@@ -419,9 +586,46 @@ class RuleBasedParser:
                     return tier
         return None
 
+    @staticmethod
+    def _clean_for_semantic_cuisine(semantic_query: str) -> str:
+        """Strip generic meal, filler, and price tokens before cuisine lookup."""
+        tokens = re.findall(r"[a-zA-Z]+", semantic_query.lower())
+        kept = [tok for tok in tokens if tok not in _SEMANTIC_CUISINE_STOPWORDS]
+        return " ".join(kept)
+
+    def _is_off_topic_query(
+        self,
+        query: str,
+        text_lower: str,
+        matched_cuisines: list[str],
+    ) -> bool:
+        """Return True if the query is clearly unrelated to restaurants/dining."""
+        if matched_cuisines:
+            return False
+        words = set(re.findall(r"[a-z]+", text_lower))
+        if words.intersection(_DINING_DOMAIN_WORDS):
+            return False
+        if words.intersection(_OFF_TOPIC_KEYWORDS):
+            return True
+        return bool(
+            self._semantic_matcher is not None
+            and self._semantic_matcher.is_ready()
+            and self._semantic_matcher.is_off_topic(query)
+        )
+
     def parse(self, query: str) -> SearchParams:
         """Parse a user query into SearchParams using deterministic rules."""
         text_lower = query.lower()
+        cuisines = self._extract_cuisines(text_lower)
+        if self._is_off_topic_query(query, text_lower, cuisines):
+            return SearchParams(
+                needs_clarification=(
+                    "EatoSphere only searches restaurants and dining spots. "
+                    "Try specifying a cuisine, city, rating, or budget "
+                    "(e.g., 'Italian in Mumbai under $30')."
+                )
+            )
+
         country = self._extract_country(text_lower)
         city = self._extract_city(text_lower)
         locality = self._match_whole_word(text_lower, list(self._vocabulary.localities))
@@ -438,7 +642,6 @@ class RuleBasedParser:
                     city = fuzzy_city
                     unknown_location = None
 
-        cuisines = self._extract_cuisines(text_lower)
         cuisine_group = (
             None
             if cuisines
@@ -459,14 +662,16 @@ class RuleBasedParser:
             for loc_token in (country, city, locality):
                 if loc_token:
                     semantic_query = re.sub(
-                        rf"\b(?:in|near|around)?\s*{re.escape(loc_token)}\b",
+                        rf"\b(?:in|near|around|on|at)?\s*{re.escape(loc_token)}\b",
                         " ",
                         semantic_query,
                         flags=re.IGNORECASE,
                     )
             semantic_query = " ".join(semantic_query.split())
             if not cuisines and cuisine_group is None:
-                cuisines = self._semantic_matcher.match_cuisines(semantic_query)
+                cuisine_query = self._clean_for_semantic_cuisine(semantic_query)
+                if cuisine_query:
+                    cuisines = self._semantic_matcher.match_cuisines(cuisine_query)
             if (
                 price_range is None
                 and max_cost_for_two is None

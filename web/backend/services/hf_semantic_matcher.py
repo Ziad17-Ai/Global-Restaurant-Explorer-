@@ -27,6 +27,25 @@ logger = logging.getLogger(__name__)
 
 _MAX_SEQ_LENGTH = 64
 _INIT_BATCH_SIZE = 32
+_OFF_TOPIC_THRESHOLD = 0.36
+_OFF_TOPIC_MARGIN = 0.06
+
+_DINING_PROTOTYPES: tuple[str, ...] = (
+    "restaurants dining food cuisine eat meal menu dish",
+    "cafe coffee brunch dinner lunch breakfast delivery reservation",
+    "spicy curry sushi pizza pasta tacos burger steak bakery",
+)
+
+_OFF_TOPIC_PROTOTYPES: tuple[str, ...] = (
+    "hotels accommodation resort airbnb room stay check-in",
+    "flights airline tickets airport travel booking",
+    "laptops smartphones electronics computers gadgets shopping",
+    "weather forecast temperature rain sunny climate",
+    "programming python javascript code software debugging script",
+    "sports football soccer basketball world cup match score",
+    "car engine repair mechanic automotive oil change",
+    "tell me a joke movies music books entertainment",
+)
 
 _CUISINE_DESCRIPTORS: dict[str, str] = {
     "North Indian": (
@@ -79,10 +98,14 @@ _PRICE_TIER_PROFILES: tuple[tuple[int, str], ...] = (
 
 
 class SemanticMatcher(Protocol):
-    """Protocol for semantic cuisine and price-tier matching."""
+    """Protocol for semantic cuisine, price-tier, and domain matching."""
 
     def is_ready(self) -> bool:
         """Return True if the semantic model and index are ready."""
+        ...
+
+    def is_off_topic(self, query: str) -> bool:
+        """Return True when the query is clearly unrelated to dining/restaurants."""
         ...
 
     def match_cuisines(self, query: str, top_k: int = 2) -> list[str]:
@@ -121,6 +144,8 @@ class HFOnnxSemanticMatcher:
             tier for tier, _ in _PRICE_TIER_PROFILES
         )
         self._price_matrix: NDArray[np.float32] | None = None
+        self._dining_matrix: NDArray[np.float32] | None = None
+        self._off_topic_matrix: NDArray[np.float32] | None = None
 
         self._initialize()
 
@@ -165,6 +190,8 @@ class HFOnnxSemanticMatcher:
                 self._cuisine_matrix = np.vstack(batches)
             price_texts = [desc for _, desc in _PRICE_TIER_PROFILES]
             self._price_matrix = self._encode(price_texts)
+            self._dining_matrix = self._encode(list(_DINING_PROTOTYPES))
+            self._off_topic_matrix = self._encode(list(_OFF_TOPIC_PROTOTYPES))
             self._ready = True
         except (OSError, RuntimeError, ValueError, ImportError) as exc:
             logger.warning(
@@ -199,6 +226,23 @@ class HFOnnxSemanticMatcher:
     def is_ready(self) -> bool:
         """Return True if ONNX session and vocabulary embeddings initialized."""
         return self._ready
+
+    def is_off_topic(self, query: str) -> bool:
+        """Return True if the query aligns much closer to off-topic domains."""
+        if (
+            not self._ready
+            or self._dining_matrix is None
+            or self._off_topic_matrix is None
+            or not query.strip()
+        ):
+            return False
+        query_vec = self._encode([query])[0]
+        dining_score = float(np.max(self._dining_matrix @ query_vec))
+        off_topic_score = float(np.max(self._off_topic_matrix @ query_vec))
+        return (
+            off_topic_score >= _OFF_TOPIC_THRESHOLD
+            and (off_topic_score - dining_score) >= _OFF_TOPIC_MARGIN
+        )
 
     def match_cuisines(self, query: str, top_k: int = 2) -> list[str]:
         """Return top canonical cuisines above the similarity threshold."""
