@@ -133,7 +133,7 @@ class NLSearchResponse(TypedDict):
 
     query: str
     interpreted_params: SearchParamsPayload
-    parser_used: Literal["huggingface", "rule_based"]
+    parser_used: Literal["huggingface", "huggingface_semantic", "rule_based"]
     fallback_used: bool
     items: list[RestaurantItem]
     total: int

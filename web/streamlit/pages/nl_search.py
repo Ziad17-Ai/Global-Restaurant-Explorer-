@@ -132,7 +132,12 @@ if last_response is not None:
     st.subheader("Interpreted parameters")
     st.caption(f"Original prompt: {escape_markdown(last_response['query'])}")
 
-    if fallback_used or parser_used == "rule_based":
+    if parser_used == "huggingface_semantic":
+        st.caption(
+            "Parser: Hugging Face local semantic model "
+            "(all-MiniLM-L6-v2 ONNX) + constrained rules."
+        )
+    elif fallback_used or parser_used == "rule_based":
         st.caption(
             "Parser fallback: handled deterministically by the rule-based parser "
             "instead of the primary LLM provider."
