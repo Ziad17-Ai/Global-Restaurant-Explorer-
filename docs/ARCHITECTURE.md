@@ -473,45 +473,47 @@ The alert channel (email or chat webhook) is configured in Airflow during deploy
 ```mermaid
 flowchart LR
     U([User browser])
-    subgraph AZ["Microsoft Azure"]
-        APPUI["App Service: Streamlit"]
-        APPS["App Service: FastAPI"]
+    subgraph AZ["Microsoft Azure (polandcentral)"]
+        APPUI["Container App: Streamlit"]
+        APPS["Container App: FastAPI + ONNX"]
+        JOB["Container Apps Job: ETL (@weekly)"]
         MYSQL[("Database for MySQL Flexible Server")]
         BLOB[("Blob Storage: Bronze")]
-        VM["Linux VM: Apache Airflow"]
-        KV["Key Vault"]
-        MON["Monitor and Application Insights"]
+        ACR[("Container Registry: ACR")]
+        KV["Key Vault (RBAC)"]
+        MON["Log Analytics"]
     end
     HF([Hugging Face Inference])
     KG([Kaggle API])
-    GH["GitHub and Actions"]
-    U --> APPUI
+    GH["GitHub Actions (OIDC)"]
+    U -->|HTTPS| APPUI
     APPUI -->|HTTPS| APPS
-    APPS --> MYSQL
+    APPS -->|TLS| MYSQL
     APPS --> HF
     APPS -.-> KV
-    APPUI -.-> KV
-    VM --> KG
-    VM --> BLOB
-    VM --> MYSQL
-    VM -.-> KV
+    JOB --> KG
+    JOB --> BLOB
+    JOB -->|TLS| MYSQL
+    JOB -.-> KV
+    GH -->|AcrPush| ACR
+    ACR -.->|AcrPull| APPUI
+    ACR -.->|AcrPull| APPS
+    ACR -.->|AcrPull| JOB
     APPS -.-> MON
-    GH --> APPUI
-    GH --> APPS
+    JOB -.-> MON
 ```
 
 | Azure service | Purpose | Priority |
 | --------------- | --------- | ---------- |
-| Database for MySQL Flexible Server | Main database | Must |
-| Blob Storage | Bronze raw files | Must |
-| App Service | FastAPI backend | Must |
-| App Service | Streamlit web presentation | Must |
-| Linux VM | Airflow host | Should |
-| Key Vault | Secrets | Should |
-| Monitor and Application Insights | Monitoring | Could |
-| Virtual Network | Private networking | Could |
+| Database for MySQL Flexible Server (`Standard_B1ms`) | Silver & Gold database (TLS required) | Must |
+| Blob Storage (`Standard_LRS`) | Bronze raw files (`bronze` container) | Must |
+| Azure Container Apps (`WorkloadProfiles` Consumption) | FastAPI backend (`ca-eatosphere-backend`) & Streamlit UI (`ca-eatosphere-streamlit`) | Must |
+| Azure Container Apps Scheduled Job | Weekly batch ETL (`job-eatosphere-etl`, `@weekly` cron) | Should |
+| Azure Container Registry (`Basic`) | Stores `backend`, `streamlit`, and `pipeline` images | Must |
+| Key Vault (RBAC) | Secrets accessed via Managed Identity (`id-eatosphere-prod`) | Should |
+| Log Analytics | Container Apps & Job execution logs | Could |
 
-Each deployed app ships `config/settings.toml` with its code. The backend and the Streamlit app are deployed together from the same commit (section 15).
+Each deployed container ships `config/settings.toml` with its code. The backend and the Streamlit app are deployed together from the same commit (section 15). Local development and Airflow DAG orchestration remain supported via the Docker Compose stack (`docker-compose.yml`).
 
 If Azure access or cost blocks any Must item, the fallback is local MySQL and Docker for the demo, documented honestly (spike S4).
 
@@ -557,7 +559,7 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | ID | Decision | Depends on | Status |
 | ---- | ---------- | ------------ | ------ |
 | D-1 | Additional source(s) | S1 | Open; the current increment uses Zomato only |
-| D-2 | Airflow hosting | S2 | Open |
+| D-2 | Airflow / ETL hosting | S2 | Closed: Production ETL runs on Azure Container Apps Scheduled Job (`job-eatosphere-etl`, `@weekly` cron) within the \$100 Student budget; Apache Airflow 3.x DAG orchestration is supported via Docker Compose |
 | D-3 | Hugging Face model and provider | S3 | Closed: `sentence-transformers/all-MiniLM-L6-v2` ONNX semantic hybrid always-on (`$0`, `30/30` Spike S3, `P95=89.7 ms`, `+185.7 MB RSS`) + `HuggingFaceAdapter` (`Qwen/Qwen3-32B`, `provider="auto"`) ready for free custom provider keys |
 | D-4 | Cross-source matching method | Second source | Open; `match_group_id` kept as a placeholder |
 | D-5 | Spatial storage and indexing | | Closed: `POINT SRID 4326` with a spatial index in Gold (`CODE_STYLE.md`, section 4) |

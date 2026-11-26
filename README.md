@@ -170,9 +170,103 @@ The local Python workflow below runs end-to-end without Docker (including a loca
   .\.venv\Scripts\python.exe -m pytest -v
   ```
 
-- **Deployed application URL:** TBD
+- **Deployed application URLs (Azure Container Apps — `polandcentral`):**
+  - **Streamlit Web App:** `https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io`
+  - **FastAPI Backend & OpenAPI `/docs`:** `https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs`
 
-## 8. Repository structure (target)
+## 8. Azure Production Deployment Guide (From Scratch)
+
+This platform runs on **Microsoft Azure** within the **\$100 Azure for Students** credit using **Azure Container Apps (Consumption)**, **Azure Database for MySQL Flexible Server (`Standard_B1ms`)**, **Azure Blob Storage (`Standard_LRS`)**, **Azure Key Vault (RBAC)**, and **Azure Container Registry (`Basic`)**, with **GitHub Actions OIDC** building and pushing `linux/amd64` images to ACR.
+
+### 8.1 Prerequisites & Region Selection
+
+- [Azure CLI (`az`)](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) + `containerapp` extension (`az extension add --name containerapp --upgrade -y`)
+- [GitHub CLI (`gh`)](https://cli.github.com/) (for setting OIDC secrets)
+- Python 3.12+ virtual environment with `pymysql` (for one-time TLS schema initialization)
+- Check your subscription's allowed regions (`az policy assignment list`) — on Azure for Students, **`polandcentral`** supports all required services (`Standard_B1ms` MySQL, Container Apps Workload Profiles, ACR, Key Vault, Storage).
+
+### 8.2 Step 1 — Provision Layer 1 Foundation (`polandcentral`)
+
+```powershell
+$RG = "rg-eatosphere-prod"
+$LOC = "polandcentral"
+$ACR = "acreatosphere2611"
+$ST = "steatosphere2611"
+$KV = "kv-eatosphere-2611"
+$ID = "id-eatosphere-prod"
+
+az group create --name $RG --location $LOC
+az acr create --name $ACR --resource-group $RG --sku Basic --admin-enabled false --location $LOC
+az storage account create --name $ST --resource-group $RG --location $LOC --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false
+$ST_KEY = az storage account keys list --resource-group $RG --account-name $ST --query "[0].value" -o tsv
+az storage container create --name bronze --account-name $ST --account-key $ST_KEY
+
+az keyvault create --name $KV --resource-group $RG --location $LOC --enable-rbac-authorization true
+$USER_ID = az ad signed-in-user show --query id -o tsv
+$KV_ID = az keyvault show --name $KV --resource-group $RG --query id -o tsv
+az role assignment create --assignee $USER_ID --role "Key Vault Secrets Officer" --scope $KV_ID
+
+$ID_PRINCIPAL = az identity create --name $ID --resource-group $RG --location $LOC --query principalId -o tsv
+$ACR_ID = az acr show --name $ACR --resource-group $RG --query id -o tsv
+az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role AcrPull --scope $ACR_ID
+az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role AcrPush --scope $ACR_ID
+az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role "Key Vault Secrets User" --scope $KV_ID
+```
+
+Populate the 7 secrets in Key Vault (never commit or echo secret values):
+`mysql-admin-password`, `mysql-pipeline-password`, `mysql-app-password`, `azure-storage-connection-string`, `kaggle-username`, `kaggle-key`, and `hf-api-key`.
+
+### 8.3 Step 2 — Build & Push Container Images via GitHub Actions OIDC
+
+1. Add federated identity credentials on `id-eatosphere-prod` for your GitHub repository (`main` and feature branches), matching GitHub's OIDC subject format (`repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/<branch>`).
+2. Set GitHub Actions repository secrets (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`).
+3. Push to trigger [`.github/workflows/build-push-acr.yml`](.github/workflows/build-push-acr.yml), which builds and pushes `backend`, `streamlit`, and `pipeline` (`linux/amd64`, tagged `:<sha>` and `:latest`) to `acreatosphere2611.azurecr.io`.
+
+### 8.4 Step 3 — Provision & Initialize Azure Database for MySQL Flexible Server
+
+1. Create `mysql-eatosphere-2611` (`Standard_B1ms`, `20 GB`, MySQL `8.0.21`, `--public-access 0.0.0.0` for Azure services) and temporarily allow your deployer IP (`AllowDeployerIP`).
+2. Connect over verified TLS (`ssl.create_default_context()`):
+   - As `eatoadmin`, execute [`sql/001_create_tables.sql`](sql/001_create_tables.sql), then create least-privilege `explorer_pipeline`@`%` (write + DDL/views) and `explorer_app`@`%` (`SELECT` only).
+   - As `explorer_pipeline`, execute [`sql/002_create_gold_views.sql`](sql/002_create_gold_views.sql) (uses `SQL SECURITY INVOKER` so no `SUPER` privilege is required).
+3. Delete `AllowDeployerIP` once initialization is complete.
+
+### 8.5 Step 4 — Container Apps Environment (`WorkloadProfiles`) & Scheduled ETL Job
+
+> **Important:** Create the Container Apps Environment with `--environment-mode WorkloadProfiles` so Scheduled Jobs and Key Vault secret references are supported (the CLI's Express mode blocks both).
+
+```powershell
+az containerapp env create --name cae-eatosphere-prod --resource-group $RG --location $LOC --environment-mode WorkloadProfiles
+```
+
+Deploy `job-eatosphere-etl` (`pipeline:latest`, `--trigger-type Schedule --cron-expression "0 3 * * 0"` for `@weekly`, `0.5` vCPU / `1.0Gi` RAM, `APP_ENV=production`, `STORAGE_BACKEND=azure`, `MYSQL_TLS_ENABLED=TRUE`, Key Vault refs for `mysql-pipeline-password`, `azure-storage-connection-string`, `kaggle-username`, `kaggle-key`), then trigger the initial seed:
+
+```powershell
+az containerapp job start --name job-eatosphere-etl --resource-group $RG
+```
+
+### 8.6 Step 5 — Deploy FastAPI Backend & Streamlit Frontend
+
+1. Deploy `ca-eatosphere-backend` (`backend:latest`, external ingress port `8000`, `0.5` vCPU / `1.0Gi` RAM, `minReplicas=0`, `maxReplicas=2`, `APP_ENV=production`, `MYSQL_TLS_ENABLED=TRUE`, `BACKEND_ALLOW_CSV_FALLBACK_IN_LOCAL=false`, Key Vault refs `mysql-app-password` and `hf-api-key`).
+2. Deploy `ca-eatosphere-streamlit` (`streamlit:latest`, external ingress port `8501`, `0.5` vCPU / `1.0Gi` RAM, `minReplicas=0`, `maxReplicas=1`, **zero** DB credentials or Key Vault secrets, only `STREAMLIT_BACKEND_URL=https://<backend-fqdn>` and `STREAMLIT_API_TIMEOUT_SECONDS=30`).
+3. Update `BACKEND_CORS_ORIGINS=https://<streamlit-fqdn>` on `ca-eatosphere-backend`.
+
+### 8.7 Estimated Monthly Cost & Teardown
+
+| Azure Service | Tier / Sizing | Est. Monthly Cost |
+| --- | --- | --- |
+| Azure Database for MySQL Flexible Server | Burstable `Standard_B1ms`, 20 GB | `~$0–$13` (Student free tier / Burstable) |
+| Azure Container Registry | `Basic` | `~$5` |
+| Azure Container Apps (`backend`, `streamlit`, `job-eatosphere-etl`) | Consumption (`minReplicas=0`, `@weekly` job) | `~$0–$3` (within 180k vCPU-s free grant) |
+| Azure Storage Account + Key Vault | `Standard_LRS` (`bronze`) + Standard RBAC | `< $0.20` |
+| **Total** | | **~\$5–\$21/month** (well within \$100 credit) |
+
+To tear down all cloud resources when finished:
+
+```powershell
+az group delete --name rg-eatosphere-prod --yes --no-wait
+```
+
+## 9. Repository structure (target)
 
 ```dsconfig
 /
@@ -209,7 +303,7 @@ The local Python workflow below runs end-to-end without Docker (including a loca
 └── tests/                     (pytest suite, including test_architecture.py and test_streamlit_smoke.py)
 ```
 
-## 9. Team
+## 10. Team
 
 | Name | Role |
 | ------ | ------ |
@@ -220,10 +314,10 @@ The local Python workflow below runs end-to-end without Docker (including a loca
 | Ahmed Hany | TBD |
 | Ziad Salah ElKady | TBD |
 
-## 10. Data licensing and attribution
+## 11. Data licensing and attribution
 
 This project uses third-party open data. Each source has its own license and attribution rules (`docs/DATA_SOURCES.md`). Verify the terms from each provider before redistributing any data. Source names and licenses are surfaced in the UI (`docs/UI_UX.md`), and required notices will be compiled in `docs/ATTRIBUTION.md`.
 
-## 11. License
+## 12. License
 
 TBD.
