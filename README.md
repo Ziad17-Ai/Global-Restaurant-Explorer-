@@ -49,6 +49,7 @@ Execution and deployment instructions are separated into two dedicated runbooks:
 | Coding standards and naming conventions | [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) |
 | AI agent and contributor navigation guide | [`AGENTS.md`](AGENTS.md) |
 | Version control, branching, collaboration | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| Testing & CI quality gates | [`docs/TESTING.md`](docs/TESTING.md), [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
 | Local execution runbook | [`docs/RUN_LOCAL.md`](docs/RUN_LOCAL.md) |
 | Azure production deployment runbook | [`docs/DEPLOY_AZURE.md`](docs/DEPLOY_AZURE.md) |
 
@@ -125,6 +126,7 @@ Secrets arrive strictly via OS environment variables (`.env` locally, Azure Key 
 ├── docker-compose.yml
 ├── .env.example
 ├── .github/workflows/
+│   ├── ci.yml                 (PR/push quality gates: ruff, mypy, pytest)
 │   └── build-push-acr.yml     (OIDC build & push to Azure Container Registry)
 ├── config/
 │   ├── settings.toml          (committed non-secret runtime settings)
@@ -134,6 +136,7 @@ Secrets arrive strictly via OS environment variables (`.env` locally, Azure Key 
 ├── docs/
 │   ├── RUN_LOCAL.md           (local Docker Compose & Python runbook)
 │   ├── DEPLOY_AZURE.md        (Azure production deployment & troubleshooting runbook)
+│   ├── TESTING.md             (testing strategy, quality gates, and E2E checklist)
 │   ├── ARCHITECTURE.md
 │   ├── CODE_STYLE.md
 │   ├── CUISINE_VOCABULARY.md
