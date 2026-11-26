@@ -1,7 +1,7 @@
 # Architecture and Design
 
-> **Status:** Draft v0.5, a living document. Items marked **TBD** depend on spikes S1-S4 and may change. Diagrams use Mermaid and render on GitHub and in local preview extensions that support it.
-> **Last updated:** 2026-11-24
+> **Status:** Draft v0.6, a living document. Items marked **TBD** depend on Increment 2 spikes (S1) and may change. Diagrams use Mermaid and render on GitHub and in local preview extensions that support it.
+> **Last updated:** 2026-11-26
 
 ## 1. Goals and constraints
 
@@ -433,7 +433,7 @@ classDiagram
 - Parameterized queries only; model output is never executed.
 - The backend uses a read-only application account; the pipeline uses a separate write account.
 - HTTPS everywhere; CORS limited to the Streamlit presentation origin.
-- MySQL firewall rules allow only the App Service, the Airflow host, and named developer IPs. Private networking is a Could item.
+- MySQL firewall rules allow Azure services (Container Apps & Scheduled Job) with verified TLS (`MYSQL_TLS_ENABLED=TRUE`); temporary deployer IP rules are removed after schema bootstrap. Private networking is a Could item.
 - Airflow web interface restricted to team members.
 - Rate limiting on the NLP endpoint to control cost.
 - User NLP text is logged only truncated to 220 characters.
@@ -451,14 +451,14 @@ Full rules: `docs/SECRETS.md`.
 
 - **Structured logs:** pipeline and backend log JSON lines with `timestamp` (UTC), `level`, `logger`, `message`, and context fields when present (`run_id`, `batch_id`, `source_id`, `rule_name`, `request_id`). Secrets are never logged.
 - **Run records:** `pipeline_runs` and `data_quality_issues` give per-run and per-rule counts.
-- **Health:** `GET /api/health` returns `{"status": "ok"}` for the App Service health check.
+- **Health:** `GET /api/health` returns `{"status": "ok"}` for the Azure Container Apps health probe.
 
 | Alert condition | Threshold | Action |
 | --- | --- | --- |
 | Quality gate | Quarantine rate above 15% | Run marked `quality_gate_failed`; Silver and Gold not updated; alert |
-| Task failure | A task fails after its retries | Airflow failure callback alert |
+| Task failure | A task fails after its retries | Airflow failure callback (local) / ACA Job failed execution status (prod) |
 | Data staleness | No successful run (including `skipped_unchanged`) for more than 7 days | Alert; the app shows a staleness notice |
-| Backend health | `GET /api/health` failing | App Service restarts the instance |
+| Backend health | `GET /api/health` failing | Azure Container Apps restarts the replica |
 
 The alert channel (email or chat webhook) is configured in Airflow during deployment.
 

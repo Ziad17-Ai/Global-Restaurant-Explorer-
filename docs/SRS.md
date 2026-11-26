@@ -1,7 +1,7 @@
 # Software Requirements Specification (SRS)
 
-> **Status:** Draft v0.4, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could).
-> **Last updated:** 2026-11-24
+> **Status:** Draft v0.5, a living document. Requirements may be added, changed, or dropped as spikes conclude and the team learns more. Priorities use MoSCoW (Must / Should / Could).
+> **Last updated:** 2026-11-26
 
 ## 1. Introduction
 
@@ -184,9 +184,9 @@ Targets are initial baselines validated during implementation and evaluation.
 | ID | Question | Resolution path |
 | ---- | ---------- | ----------------- |
 | OI-1 | Which additional source(s) for Increment 2 | Spike S1 (`docs/DATA_SOURCES.md`) |
-| OI-2 | Airflow hosting (local Docker vs. Azure Linux VM) | Spike S2 |
-| OI-3 | Hugging Face model and provider | Closed (Spike S3: `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` tier) |
-| OI-4 | Azure access, credits, cost | Spike S4 |
+| OI-2 | Airflow / ETL hosting (local Docker vs. Azure) | **Closed (Spike S2 / D-2):** Azure Container Apps Scheduled Job (`@weekly`) in prod; Apache Airflow 3.x in local Docker Compose |
+| OI-3 | Hugging Face model and provider | **Closed (Spike S3):** `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` tier |
+| OI-4 | Azure access, credits, cost | **Closed (Spike S4):** Deployed in `polandcentral` on Azure for Students (`~$5–$21/month`) |
 | OI-5 | Target countries and cities for the demo | Zomato cities in Increment 1; revisit with Source 2 |
 | OI-6 | Handling mixed currencies | **Closed:** keep original amount + ISO 4217 code and compute batch-pinned `avg_cost_for_two_usd` (`CODE_STYLE.md` §2) |
 | OI-7 | Final deadline date | Confirm with the academy |
@@ -207,3 +207,4 @@ Each requirement links to a user story. Automated architecture boundary tests (`
 | 2026-10-30 | v0.2: aligned to team proposal; added admin stories, currency and Egypt coverage notes |
 | 2026-11-23 | v0.3: codified Option A data access (Streamlit calls FastAPI over HTTP via `api_client.py`, holding no database credentials); updated testing scope to include Streamlit `AppTest` smoke tests |
 | 2026-11-24 | v0.4: scoped Increment 1 to Zomato via dynamic Kaggle API fetch; promoted FR-D7 (incremental loads & change detection) to Must; promoted US-12 and FR-A1 (`/api/pipeline/status` with per-rule breakdown) to Should; added FR-A2 (`GET /api/health`); added 15% quarantine gate, 7-day staleness threshold, 95% availability goal, 100K restaurant / 5–20 user capacity targets, 5s HF timeout, 220-char query log cap, JSON structured logging, Chrome/Edge/Firefox browser support, co-deployed unversioned API policy, `AIRFLOW_CONN_*` & `config/settings.toml` rules, and `UI_UX.md` / `CUISINE_VOCABULARY.md` / `DATA_QUALITY_RULES.md` references; closed OI-6 |
+| 2026-11-26 | v0.5: closed OI-2 (Spike S2 / Decision D-2: ACA Scheduled Job in prod + Airflow 3.x locally) and OI-4 (Spike S4: Azure Container Apps deployment in `polandcentral`) | Increment 1 production deployment |

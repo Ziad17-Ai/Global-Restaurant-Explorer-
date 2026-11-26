@@ -1,13 +1,13 @@
 # Contributing
 
-> **Status:** Draft v0.3, a living document. Coding rules are in [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md); secrets and configuration rules are in [`docs/SECRETS.md`](docs/SECRETS.md); UI rules are in [`docs/UI_UX.md`](docs/UI_UX.md).
-> **Last updated:** 2026-11-24
+> **Status:** Draft v0.4, a living document. Coding rules are in [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md); testing and CI gates are in [`docs/TESTING.md`](docs/TESTING.md); secrets and configuration rules are in [`docs/SECRETS.md`](docs/SECRETS.md); UI rules are in [`docs/UI_UX.md`](docs/UI_UX.md).
+> **Last updated:** 2026-11-26
 
 ## 1. Workflow (GitHub Flow, kept simple)
 
 We have about two weeks of build time, so we keep the workflow light.
 
-1. `main` is always working and deployable. Nobody commits to it directly.
+1. `main` is always working and deployable. Nobody commits to it directly. Merging to `main` automatically runs CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) and builds, pushes, and rolls out updated container images to Azure ([`.github/workflows/build-push-acr.yml`](.github/workflows/build-push-acr.yml) — see [`docs/DEPLOY_AZURE.md`](docs/DEPLOY_AZURE.md)).
 2. Create a short-lived branch from `main` for each task. FastAPI and Streamlit co-deploy from `main` without API route versioning, so breaking API changes must update `web/backend/`, `web/streamlit/api_client.py`, and tests in the same PR.
 3. Open a pull request (PR) early, even if it is a draft.
 4. At least one teammate reviews before merging.

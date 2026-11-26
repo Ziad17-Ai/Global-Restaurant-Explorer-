@@ -1,7 +1,7 @@
 # Project Plan
 
-> **Status:** Draft v0.4, a living document.
-> **Last updated:** 2026-11-24
+> **Status:** Draft v0.5, a living document.
+> **Last updated:** 2026-11-26
 
 ## 1. Purpose and objectives
 
@@ -28,8 +28,8 @@
 
 To keep Agile increments small and shippable while refactoring incoming drafts (`_incoming/`) into the production repository layout:
 
-- **Increment 1 (Current refactoring & baseline working software):** Refactor ETL, SQL, FastAPI, Streamlit, and Airflow into clean layered modules; dynamically ingest the Zomato dataset via the Kaggle API (`@weekly` change-checked schedule); apply the canonical cuisine vocabulary (`docs/CUISINE_VOCABULARY.md`) and 15% quality gate; wire Streamlit exclusively through `web/streamlit/api_client.py`.
-- **Increment 2 (Multi-source expansion & post-refactoring hardening):** Integrate the second data source (S1), define its schema mapping contract, cross-source `match_group_id` matching rules, and license-aware routing; finalize full-stack `docker-compose.yml`, `README.md` §7 setup instructions, and expanded testability gates (`docs/TESTING.md`).
+- **Increment 1 (Complete & deployed):** Refactor ETL, SQL, FastAPI, Streamlit, and Airflow into clean layered modules; dynamically ingest the Zomato dataset via the Kaggle API (`@weekly` change-checked schedule); apply the canonical cuisine vocabulary (`docs/CUISINE_VOCABULARY.md`) and 15% quality gate; wire Streamlit exclusively through `web/streamlit/api_client.py`; deploy to Azure Container Apps (`WorkloadProfiles` Consumption) with CI/CD (`ci.yml`, `build-push-acr.yml`) and complete local/Azure runbooks (`docs/RUN_LOCAL.md`, `docs/DEPLOY_AZURE.md`, `docs/TESTING.md`).
+- **Increment 2 (Multi-source expansion & hardening):** Integrate the second data source (S1), define its schema mapping contract, cross-source `match_group_id` matching rules, and license-aware routing.
 
 ## 3. Scope tiers (MoSCoW)
 
@@ -43,12 +43,12 @@ To keep Agile increments small and shippable while refactoring incoming drafts (
 - M6: Responsive Streamlit filters, results list, and compatible map (`docs/UI_UX.md`), consuming FastAPI over HTTP
 - M7: NLP search through Hugging Face (5s timeout) with vocabulary validation and rule-based fallback
 - M8: Per-source scheduled Airflow DAG (`@weekly` change-checked for Zomato) using `AIRFLOW_CONN_*` environment connections
-- M9: Centralized secrets (`.env.example` / Key Vault) and portable non-secret config (`config/settings.toml` + `constants.py`); MySQL on Azure, backend and Streamlit co-deployed on App Service
-- M10: Documentation, README, demo
+- M9: Centralized secrets (`.env.example` / Key Vault) and portable non-secret config (`config/settings.toml` + `constants.py`); MySQL on Azure, backend and Streamlit co-deployed on Azure Container Apps (`WorkloadProfiles` Consumption)
+- M10: Documentation, README, runbooks (`docs/RUN_LOCAL.md`, `docs/DEPLOY_AZURE.md`, `docs/TESTING.md`), demo
 
 ### Should
 
-- Airflow deployed on an Azure Linux VM
+- Production scheduled ETL orchestration via Azure Container Apps Scheduled Job (`job-eatosphere-etl`, `@weekly`); Apache Airflow 3.x in local Docker Compose (Decision D-2)
 - Azure Key Vault references in production
 - Pipeline status & per-rule quality endpoint (`GET /api/pipeline/status`, FR-A1) and status page
 - Cross-source duplicate matching rules (Increment 2, once Source 2 lands)
@@ -102,9 +102,9 @@ Everyone contributes to documentation and testing.
 | ID | Question | Due | Decision criteria | Fallback |
 | ---- | ---------- | ----- | ------------------- | ---------- |
 | S1 | Which additional source(s) and geographic data for Increment 2? | Increment 2 | Rows and category completeness for target cities (including Egypt), valid coordinates, license, ingestion effort | Deliver Increment 1 cleanly on Zomato; Overture Maps first candidate |
-| S2 | Airflow: local Docker only, or Azure VM too? | Local by 18 Nov; VM decision 21 Nov | Setup time, reliability, cost, demo value | Airflow in Docker for the demo; scripts stay scheduler-agnostic |
+| S2 | Airflow: local Docker only, or Azure VM too? | Closed (26 Nov) | Setup time, reliability, cost, demo value | **Closed (D-2):** Production ETL runs on Azure Container Apps Scheduled Job (`job-eatosphere-etl`, `@weekly`, `0 3 * * 0` UTC); Apache Airflow 3.x runs locally in Docker Compose (`docker-compose.yml`) |
 | S3 | Which Hugging Face model and provider? | Closed (26 Nov) | Correct extraction rate on 30-50 sample queries, JSON reliability, <5s latency, free-tier limits | **Closed:** Local `sentence-transformers/all-MiniLM-L6-v2` ONNX semantic hybrid (`30/30` = `100.0%`, `P95=89.7ms`, `+185.7 MB RSS`) always-on at \$0; `HuggingFaceAdapter` (`Qwen/Qwen3-32B`, `provider="auto"`) ready for free custom provider keys (Groq/Cerebras) |
-| S4 | Azure access, credits, and cost | Sprint 1 | Working subscriptions, MySQL Flexible Server + App Service cost, budget alerts set | Local MySQL and Docker for the demo; document the limitation |
+| S4 | Azure access, credits, and cost | Closed (26 Nov) | Working subscriptions, MySQL Flexible Server + Container Apps cost, budget alerts set | **Closed:** Deployed in `polandcentral` (`rg-eatosphere-prod`) on Azure for Students (\$100 credit): MySQL `Standard_B1ms`, ACA Consumption (`0–2` backend / `0–1` Streamlit), ACR Basic, Storage LRS, Key Vault (`~$5–$21/month`) |
 
 **S3 method:** write the sample queries and expected parameters first, then score each candidate model on them. Choose on measured results.
 
@@ -126,7 +126,7 @@ Everyone contributes to documentation and testing.
 
 ### Sprint 2: 22-28 Nov (Increment 1 refactoring, linkage, and deployment)
 
-- Tasks: finalize specs (`SECRETS.md`, `DATA_SOURCES.md`, `DATA_QUALITY_RULES.md`, `CUISINE_VOCABULARY.md`, `UI_UX.md`, `AGENTS.md`); refactor `_incoming/` drafts into `pipeline/`, `sql/`, `web/backend/`, `web/streamlit/`, and `config/settings.toml`; dynamic Kaggle fetch + `@weekly` change-checked Airflow DAG + 15% quality gate; co-deploy FastAPI and Streamlit; complete post-refactoring `README.md` §7 and Docker setup; start Increment 2 source integration if capacity allows. **Feature freeze 28 Nov.**
+- Tasks: finalize specs (`SECRETS.md`, `DATA_SOURCES.md`, `DATA_QUALITY_RULES.md`, `CUISINE_VOCABULARY.md`, `UI_UX.md`, `AGENTS.md`); refactor `_incoming/` drafts into `pipeline/`, `sql/`, `web/backend/`, `web/streamlit/`, and `config/settings.toml`; dynamic Kaggle fetch + `@weekly` change-checked ETL + 15% quality gate; deploy FastAPI, Streamlit, and ETL job to Azure Container Apps; complete local/Azure runbooks (`docs/RUN_LOCAL.md`, `docs/DEPLOY_AZURE.md`, `docs/TESTING.md`) and Docker setup; start Increment 2 source integration if capacity allows. **Feature freeze 28 Nov.**
 - Deliverables: cohesive, boundary-tested Increment 1 deployed and running end-to-end.
 
 ### Final: 29-30 Nov (hardening and delivery)
@@ -160,11 +160,11 @@ Everyone contributes to documentation and testing.
 - [x] Project plan (this document)
 - [x] Literature review
 - [x] SRS and system design (`SRS.md`, `ARCHITECTURE.md`, `DATA_SOURCES.md`, `DATA_QUALITY_RULES.md`, `CUISINE_VOCABULARY.md`, `SECRETS.md`, `UI_UX.md`)
-- [ ] Refactored Bronze, Silver, Gold pipeline and MySQL database (Increment 1)
-- [ ] Scheduled Airflow DAG with dynamic Kaggle fetch and 15% quality gate
-- [ ] Refactored FastAPI + Streamlit web application with three features
-- [ ] Architecture, quality-rule, and smoke tests (expanded `TESTING.md` post-refactoring)
-- [ ] Post-refactoring `README.md` §7 run instructions, `docker-compose.yml`, and deployed link
+- [x] Refactored Bronze, Silver, Gold pipeline and MySQL database (Increment 1)
+- [x] Scheduled ETL (`job-eatosphere-etl` in prod; Airflow 3.x DAG locally) with dynamic Kaggle fetch and 15% quality gate
+- [x] Refactored FastAPI + Streamlit web application with three features
+- [x] Architecture, quality-rule, and smoke tests (`docs/TESTING.md` + GitHub Actions `ci.yml`)
+- [x] Local & Azure runbooks (`docs/RUN_LOCAL.md`, `docs/DEPLOY_AZURE.md`), `docker-compose.yml`, OIDC CI/CD (`build-push-acr.yml`), and live deployed URLs
 - [ ] Final presentation and demo
 
 ## 11. Change log
@@ -175,3 +175,4 @@ Everyone contributes to documentation and testing.
 | 2026-10-30 | v0.2: stack aligned to team proposal; calendar and scope tiers added | Team proposal and deadline constraints |
 | 2026-11-23 | v0.3: confirmed Option A for Streamlit data access (calling FastAPI over HTTP with no database credentials) per `CODE_STYLE.md` CS-15 resolution | Architecture alignment |
 | 2026-11-24 | v0.4: added two-increment Agile strategy (Zomato dynamic fetch first, Source 2 next); promoted incremental loads (M4/FR-D7) to Must and `/api/pipeline/status` to Should; added 15% quarantine gate, 100K/95% targets, `config/settings.toml` + `AIRFLOW_CONN_*`, and deferred post-refactoring Docker/README/testability items | Review report decisions |
+| 2026-11-26 | v0.5: closed spikes S2 and S4 for Azure Container Apps (`WorkloadProfiles` Consumption) + ACA Scheduled Job (`polandcentral`); checked off completed Increment 1 deliverables and updated runbook references | Increment 1 production deployment |
