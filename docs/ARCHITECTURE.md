@@ -526,12 +526,12 @@ If Azure access or cost blocks any Must item, the fallback is local MySQL and Do
 | Database | MySQL on Azure Flexible Server | Decided |
 | Raw storage | Azure Blob Storage | Decided |
 | Source access | Kaggle API for the Zomato dataset | Decided |
-| Orchestration | Apache Airflow | Decided (hosting TBD, S2) |
+| Orchestration | Azure Container Apps Scheduled Job (`@weekly` in prod); Apache Airflow 3.x (local Docker Compose) | Decided (D-2) |
 | Backend | FastAPI | Decided |
 | Web presentation | Streamlit (accesses data via FastAPI over HTTP) | Decided |
-| NLP | Hugging Face Inference Providers | Decided (model TBD, S3) |
+| NLP | Hugging Face `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` | Decided (D-3) |
 | Configuration | Environment variables for secrets; `config/settings.toml` for settings | Decided |
-| Hosting | App Service, Linux VM | Decided (VM Should) |
+| Hosting | Azure Container Apps (`WorkloadProfiles` Consumption), ACR, Key Vault | Decided |
 | Version control | Git and GitHub | Decided |
 
 ## 14. UI/UX
