@@ -103,6 +103,9 @@ $ACR_ID = az acr show --name $ACR --resource-group $RG --query id -o tsv
 az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role AcrPull --scope $ACR_ID
 az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role AcrPush --scope $ACR_ID
 az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role "Key Vault Secrets User" --scope $KV_ID
+# Optional (required for automated CD rollouts from GitHub Actions):
+$RG_ID = az group show --name $RG --query id -o tsv
+az role assignment create --assignee-object-id $ID_PRINCIPAL --assignee-principal-type ServicePrincipal --role Contributor --scope $RG_ID
 ```
 
 Store the 7 required secrets in `$KV` (never echo secrets to terminal logs):
@@ -295,7 +298,35 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
 
 ---
 
-## 5. Common Errors Encountered & Exact Fixes
+## 5. Updating & Rolling Back a Live Deployment
+
+### 5.1 Automated Continuous Deployment (GitHub Actions)
+[`.github/workflows/build-push-acr.yml`](../.github/workflows/build-push-acr.yml) supports both **automatic rolling deploys** and **publish-only image builds**:
+- **Merge / push to `main`:** Automatically builds and pushes all 3 images tagged with `:<github.sha>` and `:latest`, then runs the `deploy` job to roll out `ca-eatosphere-backend`, `ca-eatosphere-streamlit`, and `job-eatosphere-etl` to the immutable `:<github.sha>` tag (zero-downtime Container Apps revision update).
+- **Push to feature branches (e.g., `refactor/infra-increment1-platform`):** Publishes images to ACR only (does not alter live production containers unless manually triggered).
+- **Manual trigger (`Actions → Build, Push, and Deploy to Azure → Run workflow`):** Exposes a **`deploy_to_azure`** boolean toggle:
+  - `true` *(default)*: Builds, pushes, and immediately rolls out the new `:<github.sha>` revision to Azure Container Apps & the ETL Job.
+  - `false`: Builds and pushes images to ACR only without touching live production revisions.
+
+> **Fork Portability:** Set GitHub Repository Variables `ACR_NAME` and `AZURE_RESOURCE_GROUP` under **Settings → Secrets and variables → Actions → Variables** to target your own ACR and Resource Group without editing YAML.
+
+### 5.2 Manual Rollout & 1-Click Rollback
+- **CLI Rollout / Rollback to a specific Git SHA:**
+  ```powershell
+  az containerapp update --name ca-eatosphere-backend --resource-group $RG --image "$ACR.azurecr.io/backend:<target-sha>"
+  az containerapp update --name ca-eatosphere-streamlit --resource-group $RG --image "$ACR.azurecr.io/streamlit:<target-sha>"
+  az containerapp job update --name job-eatosphere-etl --resource-group $RG --image "$ACR.azurecr.io/pipeline:<target-sha>"
+  ```
+- **Portal Rollback:** Open the Container App → **Application > Revisions and replicas** → activate the previous healthy revision.
+
+### 5.3 Updating Secrets & Database Schema
+- **Key Vault Secrets:** Update the secret value in `kv-eatosphere-<suffix>`, then restart the active Container App revision (`az containerapp revision restart ...` or Portal **Revisions > Restart**). No image rebuild required.
+- **Gold Views (`sql/002_create_gold_views.sql`):** Applied automatically on the next `job-eatosphere-etl` run (or trigger immediately with `az containerapp job start --name job-eatosphere-etl --resource-group $RG`).
+- **Silver Tables (`sql/001_create_tables.sql`):** Temporarily add `AllowDeployerIP` on Azure MySQL, apply the updated SQL script over TLS as `eatoadmin`, then delete `AllowDeployerIP`.
+
+---
+
+## 6. Common Errors Encountered & Exact Fixes
 
 | Error / Code | Where It Occurs | Root Cause | Exact Fix |
 | --- | --- | --- | --- |
@@ -312,7 +343,7 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
 
 ---
 
-## 6. Estimated Monthly Cost & Teardown
+## 7. Estimated Monthly Cost & Teardown
 
 | Azure Service | Tier / Sizing | Est. Monthly Cost |
 | --- | --- | --- |

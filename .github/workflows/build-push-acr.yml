@@ -1,7 +1,13 @@
-name: Build and Push Images to ACR
+name: Build, Push, and Deploy to Azure
 
 on:
   workflow_dispatch:
+    inputs:
+      deploy_to_azure:
+        description: "Roll out updated images to Azure Container Apps & ETL Job (uncheck to publish to ACR only)"
+        type: boolean
+        required: true
+        default: true
   push:
     branches:
       - main
@@ -61,3 +67,45 @@ jobs:
             ${{ vars.ACR_NAME || 'acreatosphere2611' }}.azurecr.io/${{ matrix.name }}:latest
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  deploy:
+    needs: build-and-push
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_to_azure == true)
+    runs-on: ubuntu-latest
+    env:
+      ACR_NAME: ${{ vars.ACR_NAME || 'acreatosphere2611' }}
+      AZURE_RG: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-eatosphere-prod' }}
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure Container Apps CLI extension
+        run: az extension add --name containerapp --upgrade -y
+
+      - name: Roll out FastAPI Backend
+        run: |
+          az containerapp update \
+            --name ca-eatosphere-backend \
+            --resource-group "$AZURE_RG" \
+            --image "${ACR_NAME}.azurecr.io/backend:${IMAGE_TAG}"
+
+      - name: Roll out Streamlit Frontend
+        run: |
+          az containerapp update \
+            --name ca-eatosphere-streamlit \
+            --resource-group "$AZURE_RG" \
+            --image "${ACR_NAME}.azurecr.io/streamlit:${IMAGE_TAG}"
+
+      - name: Update Weekly ETL Scheduled Job
+        run: |
+          az containerapp job update \
+            --name job-eatosphere-etl \
+            --resource-group "$AZURE_RG" \
+            --image "${ACR_NAME}.azurecr.io/pipeline:${IMAGE_TAG}"
