@@ -5,8 +5,9 @@
 > **Portability Note:** Anyone can deploy this repository to their own Azure subscription and GitHub fork. Globally unique resource names (ACR, Storage Account, Key Vault, MySQL server) and generated Container Apps URLs will differ per deployment — replace `<suffix>`, `<your-region>`, and `<your-...-fqdn>` with your own values.
 
 ### Reference Demo Deployment (`polandcentral`)
-- **Streamlit Web App:** https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io
-- **FastAPI Backend & OpenAPI:** https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs
+
+- **Streamlit Web App:** <https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io>
+- **FastAPI Backend & OpenAPI:** <https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs>
 
 This guide provides **three independent deployment tracks** — pick whichever matches your workflow:
 - **Track A — Manual CLI Workflow (Without MCPs/Agents):** Reproducible PowerShell/Bash `az` + `gh` scripts.
@@ -55,10 +56,13 @@ Choose a short lowercase alphanumeric `<suffix>` (for example `2611` or your ini
 ## 2. Track A: Manual CLI Workflow (Without MCPs or Agents)
 
 ### 2.1 Prerequisites
+
 - [Azure CLI (`az`)](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) logged in (`az login`), plus the `containerapp` extension:
+
   ```powershell
   az extension add --name containerapp --upgrade -y
   ```
+
 - [GitHub CLI (`gh`)](https://cli.github.com/) logged in (`gh auth login`)
 - Python 3.12+ `.venv` with `pymysql` installed (for one-time TLS schema initialization)
 - Valid `KAGGLE_USERNAME`, `KAGGLE_KEY`, and `HF_API_KEY` values ready locally
@@ -225,6 +229,7 @@ sequenceDiagram
 ```
 
 ### Delegation & Safety Rules for Agents
+
 1. **Use `azure-mcp` for discovery first:** Call `subscription_list` and `group_list` before issuing CLI commands; always verify `az policy assignment list` on student subscriptions before selecting a region.
 2. **Never echo secrets:** Read `.env` values in Python/PowerShell memory only, pass them directly to `az keyvault secret set ... -o none`, and never print secret values to stdout.
 3. **Offload container builds to GitHub Actions:** Prefer pushing [`.github/workflows/build-push-acr.yml`](../.github/workflows/build-push-acr.yml) over local `docker push` on constrained connections.
@@ -237,11 +242,13 @@ sequenceDiagram
 If you prefer not to run CLI scripts, every step in Track A maps directly to the [Azure Portal (`portal.azure.com`)](https://portal.azure.com) and GitHub Web UI:
 
 ### 4.1 Step 1 — Check Allowed Regions & Create Resource Group
+
 1. In Azure Portal, open **Policy** → **Authoring > Assignments** → inspect **Allowed resource deployment regions** to see which regions your subscription permits (e.g., `Poland Central`).
 2. Open **Resource groups** → **+ Create** → name it `rg-eatosphere-prod`, select your allowed region → **Review + create**.  
    *(Docs: [Manage Azure resource groups via Portal](https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/manage-resource-groups-portal))*
 
 ### 4.2 Step 2 — Provision Foundation Resources in `rg-eatosphere-prod`
+
 1. **Azure Container Registry:** Search **Container registries** → **+ Create** → Registry name `acreatosphere<suffix>`, SKU **`Basic`**, keep **Admin user** disabled → **Create**.  
    *(Docs: [Create an ACR in Azure Portal](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-portal))*
 2. **Storage Account (`bronze` container):** Search **Storage accounts** → **+ Create** → name `steatosphere<suffix>`, Performance `Standard`, Redundancy **`LRS`**, **Advanced** tab: set **Minimum TLS version** to `Version 1.2` and disable **Allow enabling anonymous access on individual containers** → **Create**. Once deployed, open **Data storage > Containers** → **+ Container** → name it `bronze`. Copy the connection string from **Security + networking > Access keys**.  
@@ -255,6 +262,7 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
    - Open your **Key Vault** → **Access control (IAM)** → assign **`Key Vault Secrets User`** to `id-eatosphere-prod`.
 
 ### 4.3 Step 3 — Build & Push Container Images via GitHub Web UI
+
 1. In Azure Portal, open **Managed Identities** → `id-eatosphere-prod` → **Settings > Federated credentials** → **+ Add Credential** → Scenario: **`GitHub Actions deploying Azure resources`** → enter your GitHub Organization/User, Repository name, Entity type **`Branch`**, Branch name **`main`** → **Add**.  
    *(Docs: [Configure a federated identity credential for GitHub Actions](https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-create-trust-user-assigned-managed-identity))*
 2. In your GitHub repository web page, open **Settings > Secrets and variables > Actions**:
@@ -263,6 +271,7 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
 3. Open the GitHub **Actions** tab → select **Build and Push Images to ACR** → click **Run workflow** → wait ~2 minutes until `backend`, `streamlit`, and `pipeline` show green checkmarks.
 
 ### 4.4 Step 4 — Provision & Initialize MySQL Flexible Server
+
 1. Search **Azure Database for MySQL flexible servers** → **+ Create** → **Flexible server**:
    - Name: `mysql-eatosphere-<suffix>`, Region: same as RG, Version: `8.0`, Compute + storage: **Configure server** → **`Burstable`**, **`Standard_B1ms`**, `20 GiB`.
    - Admin username: `eatoadmin`, Password: paste your `mysql-admin-password` secret.
@@ -274,6 +283,7 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
    - Connect as `explorer_pipeline` and execute [`sql/002_create_gold_views.sql`](../sql/002_create_gold_views.sql).
 
 ### 4.5 Step 5 — Create Container Apps Environment, ETL Job, Backend & Streamlit
+
 1. **Container Apps Environment:** Search **Container Apps Environments** → **+ Create** → name `cae-eatosphere-prod`, ensure **Workload profiles** (Consumption) is selected (do **not** use Express mode) → **Create**.
 2. **Weekly ETL Job (`job-eatosphere-etl`):** Search **Container Apps Jobs** → **+ Create**:
    - Environment: `cae-eatosphere-prod`, Trigger type: **`Schedule`**, Cron expression: `0 3 * * 0`.
@@ -301,6 +311,7 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
 ## 5. Updating & Rolling Back a Live Deployment
 
 ### 5.1 Automated Continuous Deployment (GitHub Actions)
+
 [`.github/workflows/build-push-acr.yml`](../.github/workflows/build-push-acr.yml) supports both **automatic rolling deploys** and **publish-only image builds**:
 - **Merge / push to `main`:** Automatically builds and pushes all 3 images tagged with `:<github.sha>` and `:latest`, then runs the `deploy` job to roll out `ca-eatosphere-backend`, `ca-eatosphere-streamlit`, and `job-eatosphere-etl` to the immutable `:<github.sha>` tag (zero-downtime Container Apps revision update).
 - **Push to feature branches (e.g., `refactor/infra-increment1-platform`):** Publishes images to ACR only (does not alter live production containers unless manually triggered).
@@ -311,15 +322,19 @@ If you prefer not to run CLI scripts, every step in Track A maps directly to the
 > **Fork Portability:** Set GitHub Repository Variables `ACR_NAME` and `AZURE_RESOURCE_GROUP` under **Settings → Secrets and variables → Actions → Variables** to target your own ACR and Resource Group without editing YAML.
 
 ### 5.2 Manual Rollout & 1-Click Rollback
+
 - **CLI Rollout / Rollback to a specific Git SHA:**
+
   ```powershell
   az containerapp update --name ca-eatosphere-backend --resource-group $RG --image "$ACR.azurecr.io/backend:<target-sha>"
   az containerapp update --name ca-eatosphere-streamlit --resource-group $RG --image "$ACR.azurecr.io/streamlit:<target-sha>"
   az containerapp job update --name job-eatosphere-etl --resource-group $RG --image "$ACR.azurecr.io/pipeline:<target-sha>"
   ```
+
 - **Portal Rollback:** Open the Container App → **Application > Revisions and replicas** → activate the previous healthy revision.
 
 ### 5.3 Updating Secrets & Database Schema
+
 - **Key Vault Secrets:** Update the secret value in `kv-eatosphere-<suffix>`, then restart the active Container App revision (`az containerapp revision restart ...` or Portal **Revisions > Restart**). No image rebuild required.
 - **Gold Views (`sql/002_create_gold_views.sql`):** Applied automatically on the next `job-eatosphere-etl` run (or trigger immediately with `az containerapp job start --name job-eatosphere-etl --resource-group $RG`).
 - **Silver Tables (`sql/001_create_tables.sql`):** Temporarily add `AllowDeployerIP` on Azure MySQL, apply the updated SQL script over TLS as `eatoadmin`, then delete `AllowDeployerIP`.

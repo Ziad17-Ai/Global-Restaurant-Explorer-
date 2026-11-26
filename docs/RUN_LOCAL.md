@@ -30,6 +30,7 @@ flowchart TB
 Runs **MySQL 8.0**, **Apache Airflow 3.x** (backed by PostgreSQL), **FastAPI** (with pre-baked `all-MiniLM-L6-v2` ONNX weights), and **Streamlit 1.67.x** together.
 
 ### 2.1 Prerequisites
+
 - Docker Desktop (running) with Docker Compose v2
 - Copy [`.env.example`](../.env.example) to `.env` and fill in:
   - `MYSQL_ROOT_PASSWORD`, `MYSQL_APP_USER` / `MYSQL_APP_PASSWORD`, `MYSQL_PIPELINE_USER` / `MYSQL_PIPELINE_PASSWORD`

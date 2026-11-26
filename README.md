@@ -10,9 +10,10 @@ A data engineering platform that programmatically ingests restaurant data on per
 The data pipeline is the core of the project. The web app is the layer users interact with.
 
 ### Reference Live Deployment (`polandcentral`)
+>
 > **Note:** Azure Container Apps generates unique FQDNs per deployment. The links below point to the team's reference deployment; your own deployment will generate its own URLs (see [`docs/DEPLOY_AZURE.md`](docs/DEPLOY_AZURE.md)).
-- **Streamlit Web App:** https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io
-- **FastAPI Backend & OpenAPI Docs:** https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs
+- **Streamlit Web App:** <https://ca-eatosphere-streamlit.politeriver-19c81647.polandcentral.azurecontainerapps.io>
+- **FastAPI Backend & OpenAPI Docs:** <https://ca-eatosphere-backend.politeriver-19c81647.polandcentral.azurecontainerapps.io/docs>
 
 ---
 
