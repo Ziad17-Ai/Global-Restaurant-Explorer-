@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import difflib
 import json
 import logging
 import re
@@ -17,6 +18,7 @@ from huggingface_hub import InferenceClient
 from pydantic import ValidationError
 
 from web.backend.constants import (
+    CITY_ALIASES,
     COUNTRY_ALIASES,
     DEFAULT_CACHE_MAX_ENTRIES,
     DEFAULT_CACHE_TTL_SECONDS,
@@ -35,6 +37,7 @@ from web.backend.constants import (
 )
 from web.backend.repositories.meta_repository import VocabularySnapshot
 from web.backend.schemas.nlp import SearchParams
+from web.backend.services.hf_semantic_matcher import SemanticMatcher
 from web.backend.settings import BackendSettings, settings
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,8 @@ logger = logging.getLogger(__name__)
 PROMPT_FILE_PATH = Path(__file__).resolve().parent / "prompts" / "nl_search_prompt.txt"
 
 _MAX_PROMPT_VOCAB_ITEMS = 120
+_MIN_FUZZY_LOCATION_LEN = 4
+_FUZZY_LOCATION_CUTOFF = 0.80
 
 _PRICE_KEYWORD_MAP: tuple[tuple[tuple[str, ...], int], ...] = (
     (("cheap", "budget", "inexpensive", "low cost"), PRICE_RANGE_TIER_ONE),
@@ -188,10 +193,17 @@ class RuleBasedParser:
         self,
         vocabulary: VocabularySnapshot,
         cuisine_synonyms: dict[str, str] | None = None,
+        semantic_matcher: SemanticMatcher | None = None,
     ) -> None:
-        """Initialize the rule-based parser with known vocabulary and synonyms."""
+        """Initialize the rule-based parser with vocabulary, synonyms, and matcher."""
         self._vocabulary = vocabulary
         self._synonyms = cuisine_synonyms or {}
+        self._semantic_matcher = semantic_matcher
+
+    @property
+    def has_active_semantic_matcher(self) -> bool:
+        """Return True when an initialized semantic matcher is attached."""
+        return bool(self._semantic_matcher and self._semantic_matcher.is_ready())
 
     @staticmethod
     def _match_whole_word(
@@ -218,6 +230,43 @@ class RuleBasedParser:
             if canonical in self._vocabulary.countries:
                 return canonical
         return None
+
+    def _extract_city(self, text_lower: str) -> str | None:
+        """Extract canonical city name or recognized alias."""
+        direct = self._match_whole_word(text_lower, list(self._vocabulary.cities))
+        if direct is not None:
+            return direct
+        alias_match = self._match_whole_word(text_lower, list(CITY_ALIASES.keys()))
+        if alias_match is not None:
+            canonical = CITY_ALIASES[alias_match.lower()]
+            if canonical in self._vocabulary.cities:
+                return canonical
+        return None
+
+    def _fuzzy_match_location(
+        self,
+        candidate: str,
+    ) -> tuple[str | None, str | None]:
+        """Recover minor typos in explicit location names via difflib."""
+        cand_lower = candidate.strip().lower()
+        if len(cand_lower) < _MIN_FUZZY_LOCATION_LEN:
+            return None, None
+        city_map = {c.lower(): c for c in self._vocabulary.cities}
+        for alias, canonical in CITY_ALIASES.items():
+            if canonical in self._vocabulary.cities:
+                city_map[alias] = canonical
+        city_hits = difflib.get_close_matches(
+            cand_lower, list(city_map.keys()), n=1, cutoff=_FUZZY_LOCATION_CUTOFF
+        )
+        if city_hits:
+            return None, city_map[city_hits[0]]
+        country_map = {c.lower(): c for c in self._vocabulary.countries}
+        country_hits = difflib.get_close_matches(
+            cand_lower, list(country_map.keys()), n=1, cutoff=_FUZZY_LOCATION_CUTOFF
+        )
+        if country_hits:
+            return country_map[country_hits[0]], None
+        return None, None
 
     @staticmethod
     def _spans_overlap(
@@ -374,10 +423,20 @@ class RuleBasedParser:
         """Parse a user query into SearchParams using deterministic rules."""
         text_lower = query.lower()
         country = self._extract_country(text_lower)
-        city = self._match_whole_word(text_lower, list(self._vocabulary.cities))
+        city = self._extract_city(text_lower)
         locality = self._match_whole_word(text_lower, list(self._vocabulary.localities))
         if locality and city and locality.lower() == city.lower():
             locality = None
+
+        unknown_location: str | None = None
+        if country is None and city is None and locality is None:
+            unknown_location = self._extract_unmatched_location(query, text_lower)
+            if unknown_location is not None:
+                fuzzy_country, fuzzy_city = self._fuzzy_match_location(unknown_location)
+                if fuzzy_country is not None or fuzzy_city is not None:
+                    country = fuzzy_country
+                    city = fuzzy_city
+                    unknown_location = None
 
         cuisines = self._extract_cuisines(text_lower)
         cuisine_group = (
@@ -390,6 +449,30 @@ class RuleBasedParser:
         min_rating = self._extract_rating(text_lower)
         max_cost_for_two, max_cost_usd = self._extract_costs(text_lower)
         price_range = self._extract_price_range(text_lower)
+
+        if (
+            unknown_location is None
+            and self._semantic_matcher is not None
+            and self._semantic_matcher.is_ready()
+        ):
+            semantic_query = query
+            for loc_token in (country, city, locality):
+                if loc_token:
+                    semantic_query = re.sub(
+                        rf"\b(?:in|near|around)?\s*{re.escape(loc_token)}\b",
+                        " ",
+                        semantic_query,
+                        flags=re.IGNORECASE,
+                    )
+            semantic_query = " ".join(semantic_query.split())
+            if not cuisines and cuisine_group is None:
+                cuisines = self._semantic_matcher.match_cuisines(semantic_query)
+            if (
+                price_range is None
+                and max_cost_for_two is None
+                and max_cost_usd is None
+            ):
+                price_range = self._semantic_matcher.match_price_range(semantic_query)
 
         has_online_delivery: bool | None = None
         if re.search(r"\b(?:no|without)\s+(?:online\s+)?delivery\b", text_lower):
@@ -423,18 +506,16 @@ class RuleBasedParser:
             has_online_delivery=has_online_delivery,
             has_table_booking=has_table_booking,
         )
-        if country is None and city is None and locality is None:
-            unknown_location = self._extract_unmatched_location(query, text_lower)
-            if unknown_location is not None:
-                params = params.model_copy(
-                    update={
-                        "needs_clarification": (
-                            f"Location '{unknown_location}' was not found in the "
-                            "catalog. Try a supported country or city (e.g., "
-                            "New Delhi, Mumbai, London, Dubai, or Singapore)."
-                        )
-                    }
-                )
+        if unknown_location is not None:
+            params = params.model_copy(
+                update={
+                    "needs_clarification": (
+                        f"Location '{unknown_location}' was not found in the "
+                        "catalog. Try a supported country or city (e.g., "
+                        "New Delhi, Mumbai, London, Dubai, or Singapore)."
+                    )
+                }
+            )
         if not _has_any_filter(params) and params.needs_clarification is None:
             params = params.model_copy(
                 update={

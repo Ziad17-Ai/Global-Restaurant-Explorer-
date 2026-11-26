@@ -20,6 +20,9 @@ from web.backend.constants import (
     DEFAULT_CACHE_TTL_SECONDS,
     DEFAULT_NLP_RATE_LIMIT_PER_MINUTE,
     DEFAULT_PAGE_LIMIT,
+    DEFAULT_SEMANTIC_CUISINE_THRESHOLD,
+    DEFAULT_SEMANTIC_MODEL_ID,
+    DEFAULT_SEMANTIC_PRICE_THRESHOLD,
     GOLD_MAX_AGE_DAYS,
     MAX_NLP_INPUT_CHARS,
     MAX_NLP_OUTPUT_TOKENS,
@@ -113,8 +116,12 @@ class BackendSettings(BaseSettings):
     freshness_gold_max_age_days: int = GOLD_MAX_AGE_DAYS
     database_connect_timeout_seconds: int = 15
 
-    nlp_model_id: str = "replace_after_spike_s3"
-    nlp_provider: str = "replace_after_spike_s3"
+    nlp_model_id: str = "Qwen/Qwen3-32B"
+    nlp_provider: str = "auto"
+    nlp_semantic_model_id: str = DEFAULT_SEMANTIC_MODEL_ID
+    nlp_semantic_enabled: bool = True
+    nlp_semantic_cuisine_threshold: float = DEFAULT_SEMANTIC_CUISINE_THRESHOLD
+    nlp_semantic_price_threshold: float = DEFAULT_SEMANTIC_PRICE_THRESHOLD
     nlp_timeout_seconds: int = NLP_TIMEOUT_SECONDS
     nlp_max_input_chars: int = MAX_NLP_INPUT_CHARS
     nlp_max_output_tokens: int = MAX_NLP_OUTPUT_TOKENS

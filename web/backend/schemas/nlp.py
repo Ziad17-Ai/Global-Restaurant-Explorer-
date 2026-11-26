@@ -69,7 +69,7 @@ class NLSearchResponseOut(BaseModel):
 
     query: str
     interpreted_params: SearchParamsOut
-    parser_used: Literal["huggingface", "rule_based"]
+    parser_used: Literal["huggingface", "huggingface_semantic", "rule_based"]
     fallback_used: bool
     items: list[RestaurantOut]
     total: int

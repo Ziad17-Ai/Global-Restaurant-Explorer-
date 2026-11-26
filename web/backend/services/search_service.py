@@ -17,6 +17,7 @@ from web.backend.schemas.nlp import (
     NLSearchResponseOut,
     SearchParams,
 )
+from web.backend.services.hf_semantic_matcher import get_cached_semantic_matcher
 from web.backend.services.nlp_adapter import (
     HuggingFaceAdapter,
     NLPAdapter,
@@ -57,9 +58,11 @@ class SearchService:
 
         vocabulary = self._meta_repository.get_vocabulary()
         synonyms = load_cuisine_synonyms(self._settings.cuisine_map_path)
+        semantic_matcher = get_cached_semantic_matcher(vocabulary, self._settings)
         fallback = self._fallback_adapter or RuleBasedParser(
             vocabulary=vocabulary,
             cuisine_synonyms=synonyms,
+            semantic_matcher=semantic_matcher,
         )
         primary = self._primary_adapter or HuggingFaceAdapter(
             vocabulary=vocabulary,
@@ -77,28 +80,40 @@ class SearchService:
         self._rate_limiter.check_and_record(client_key)
 
         primary_adapter, fallback_adapter = self._resolve_adapters()
-        parser_used: Literal["huggingface", "rule_based"] = "huggingface"
+        parser_used: Literal["huggingface", "huggingface_semantic", "rule_based"] = (
+            "huggingface"
+        )
         fallback_used = False
         interpreted_params: SearchParams
 
         if isinstance(primary_adapter, RuleBasedParser):
             interpreted_params = primary_adapter.parse(request_payload.query)
-            parser_used = "rule_based"
+            parser_used = (
+                "huggingface_semantic"
+                if primary_adapter.has_active_semantic_matcher
+                else "rule_based"
+            )
             fallback_used = False
         else:
             try:
                 interpreted_params = primary_adapter.parse(request_payload.query)
             except (NLPProviderError, TimeoutError, ValueError, RuntimeError) as exc:
+                semantic_active = (
+                    isinstance(fallback_adapter, RuleBasedParser)
+                    and fallback_adapter.has_active_semantic_matcher
+                )
+                parser_used = (
+                    "huggingface_semantic" if semantic_active else "rule_based"
+                )
                 logger.warning(
-                    "Primary NLP parser failed; falling back to rule-based parser",
+                    "Primary NLP parser failed; falling back to local parser",
                     extra={
-                        "parser_used": "rule_based",
+                        "parser_used": parser_used,
                         "fallback_used": True,
                         "details": str(exc)[:QUERY_LOG_MAX_CHARS],
                     },
                 )
                 interpreted_params = fallback_adapter.parse(request_payload.query)
-                parser_used = "rule_based"
                 fallback_used = True
 
         truncated_query = truncate_query_for_log(

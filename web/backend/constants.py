@@ -10,6 +10,10 @@ MAX_NLP_INPUT_CHARS = 500
 MAX_NLP_OUTPUT_TOKENS = 256
 QUERY_LOG_MAX_CHARS = 220
 GOLD_MAX_AGE_DAYS = 7
+DEFAULT_SEMANTIC_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_SEMANTIC_CUISINE_THRESHOLD = 0.48
+DEFAULT_SEMANTIC_PRICE_THRESHOLD = 0.44
+DEFAULT_SEMANTIC_PRICE_MARGIN = 0.04
 
 METERS_PER_DEGREE_LATITUDE = 111_320.0
 MAX_SEARCH_RADIUS_M = 50_000.0
@@ -113,6 +117,15 @@ COUNTRY_ALIASES: dict[str, str] = {
     "u.s.a.": "United States",
     "united arab emirates": "UAE",
     "emirates": "UAE",
+}
+
+CITY_ALIASES: dict[str, str] = {
+    "delhi": "New Delhi",
+    "bombay": "Mumbai",
+    "calcutta": "Kolkata",
+    "bengaluru": "Bangalore",
+    "madras": "Chennai",
+    "gurugram": "Gurgaon",
 }
 
 DEFAULT_PINNED_FX_RATES_TO_USD: dict[str, Decimal] = {
