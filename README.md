@@ -36,7 +36,7 @@ The data pipeline is the core of the project. The web app is the layer users int
 | AI agent and contributor navigation guide | [`AGENTS.md`](AGENTS.md) |
 | Version control, branching, collaboration | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
 | Testing and validation plan | [`docs/CODE_STYLE.md`](docs/CODE_STYLE.md) section 9 (`docs/TESTING.md` deferred until post-refactoring) |
-| Deployment and execution instructions | This file, section 7 (local Python runbook live; `docker-compose.yml` post-refactoring) |
+| Deployment and execution instructions | This file, section 7 (Docker Compose full stack + local Python runbook) |
 
 ## 3. Features
 
@@ -94,7 +94,37 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 7. Getting started
 
-> **Note:** Full `docker-compose.yml` multi-container orchestration (Airflow + MySQL) is scheduled for the next post-refactoring step. The local Python workflow below runs end-to-end today (including a local CSV fallback in the backend when MySQL is offline in `APP_ENV=local`).
+### Option A: Docker Compose (Full Stack)
+
+Run MySQL 8.0, FastAPI (with pre-baked Hugging Face ONNX NLP weights), Streamlit 1.67.x, and Apache Airflow 3.x together:
+
+1. **Configure `.env`:** Copy [`.env.example`](.env.example) to `.env` and fill in `MYSQL_ROOT_PASSWORD`, `MYSQL_APP_USER` / `MYSQL_APP_PASSWORD`, `MYSQL_PIPELINE_USER` / `MYSQL_PIPELINE_PASSWORD`, `AIRFLOW_PG_PASSWORD`, `AIRFLOW_FERNET_KEY`, `AIRFLOW_JWT_SECRET`, and `KAGGLE_*` / `HF_API_KEY`.
+2. **Build and start all services:**
+
+   ```bash
+   docker compose up --build -d
+   ```
+
+3. **Run the Medallion ETL pipeline into containerized MySQL:**
+
+   ```bash
+   docker compose --profile tools run --rm pipeline --source-csv data/zomato.csv --force
+   ```
+
+4. **Open the services:**
+   - **Streamlit Web App:** `http://127.0.0.1:8501`
+   - **FastAPI OpenAPI Docs:** `http://127.0.0.1:8000/docs` (`http://127.0.0.1:8000/api/health`)
+   - **Apache Airflow 3.x UI:** `http://127.0.0.1:8080`
+5. **Stop (or reset volumes):**
+
+   ```bash
+   docker compose down        # keep MySQL & Airflow volumes
+   docker compose down -v     # wipe volumes for a clean re-init
+   ```
+
+### Option B: Local Python Development
+
+The local Python workflow below runs end-to-end without Docker (including a local CSV fallback in the backend when MySQL is offline in `APP_ENV=local`).
 
 - **Prerequisites:** Python 3.12+ (3.13 recommended), optional MySQL 8.0
 - **1. Clone & install:**
