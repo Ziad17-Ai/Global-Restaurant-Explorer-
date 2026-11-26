@@ -15,11 +15,12 @@ COPY config/settings.toml config/cuisine_map.csv /app/config/
 COPY sql/002_create_gold_views.sql /app/sql/002_create_gold_views.sql
 COPY pipeline /app/pipeline
 
+# Match Airflow's UID/GID (50000:0) so shared ./data and ./logs bind mounts stay writable by both containers.
 RUN mkdir -p /app/data/bronze /app/data/quarantine /app/data/reports /app/logs \
-    && groupadd --gid 10001 appuser \
-    && useradd --uid 10001 --gid 10001 --create-home appuser \
-    && chown -R appuser:appuser /app
+    && useradd --uid 50000 --gid 0 --create-home appuser \
+    && chown -R 50000:0 /app \
+    && chmod -R g+rwX /app/data /app/logs
 
-USER appuser
+USER 50000:0
 
 ENTRYPOINT ["python", "-m", "pipeline.runner"]

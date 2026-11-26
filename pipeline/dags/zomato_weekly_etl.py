@@ -170,7 +170,10 @@ def _fallback_task(
     *,
     task_id: str | None = None,
     trigger_rule: str = "all_success",
+    multiple_outputs: bool = False,
 ) -> Callable[[Callable[_P, _R]], Callable[..., _FallbackXComArg]]:
+    del multiple_outputs
+
     def decorator(func: Callable[_P, _R]) -> Callable[..., _FallbackXComArg]:
         resolved_id = task_id or func.__name__
 
@@ -287,7 +290,9 @@ _DEFAULT_ARGS: dict[str, object] = {
 def zomato_weekly_etl() -> None:
     """Wire the weekly change-checked Zomato Medallion ETL tasks."""
 
-    @task(task_id="check_zomato_version")
+    # Explicitly disable TaskFlow multiple_outputs so dict payloads containing
+    # None fields serialize as a single return_value XCom in Airflow 3.x.
+    @task(task_id="check_zomato_version", multiple_outputs=False)
     def check_zomato_version() -> dict[str, object]:
         config = load_pipeline_runtime_config()
         run_id = str(uuid.uuid4())
@@ -350,7 +355,7 @@ def zomato_weekly_etl() -> None:
             ),
         }
 
-    @task(task_id="fetch_and_store_bronze")
+    @task(task_id="fetch_and_store_bronze", multiple_outputs=False)
     def fetch_and_store_bronze(check_ctx: dict[str, object]) -> dict[str, object]:
         if check_ctx["status"] == RUN_STATUS_SKIPPED_UNCHANGED:
             return dict(check_ctx)
@@ -396,7 +401,7 @@ def zomato_weekly_etl() -> None:
         updated_ctx["bronze_path"] = bronze_uri
         return updated_ctx
 
-    @task(task_id="standardize_and_validate_silver")
+    @task(task_id="standardize_and_validate_silver", multiple_outputs=False)
     def standardize_and_validate_silver(
         bronze_ctx: dict[str, object],
     ) -> dict[str, object]:
@@ -464,7 +469,7 @@ def zomato_weekly_etl() -> None:
         out_ctx["rows_warned"] = validation.rows_warned
         return out_ctx
 
-    @task(task_id="enforce_quality_gate")
+    @task(task_id="enforce_quality_gate", multiple_outputs=False)
     def enforce_quality_gate_task(
         val_ctx: dict[str, object],
     ) -> dict[str, object]:
@@ -488,7 +493,7 @@ def zomato_weekly_etl() -> None:
             raise
         return out_ctx
 
-    @task(task_id="upsert_silver")
+    @task(task_id="upsert_silver", multiple_outputs=False)
     def upsert_silver_task(gate_ctx: dict[str, object]) -> dict[str, object]:
         if gate_ctx["status"] == RUN_STATUS_SKIPPED_UNCHANGED:
             return dict(gate_ctx)
@@ -526,7 +531,7 @@ def zomato_weekly_etl() -> None:
         out_ctx["rows_unchanged"] = stats.rows_unchanged
         return out_ctx
 
-    @task(task_id="refresh_gold")
+    @task(task_id="refresh_gold", multiple_outputs=False)
     def refresh_gold_task(silver_ctx: dict[str, object]) -> dict[str, object]:
         if silver_ctx["status"] == RUN_STATUS_SKIPPED_UNCHANGED:
             return dict(silver_ctx)
@@ -543,7 +548,11 @@ def zomato_weekly_etl() -> None:
         out_ctx["status"] = RUN_STATUS_SUCCESS
         return out_ctx
 
-    @task(task_id="record_pipeline_run_summary", trigger_rule="all_done")
+    @task(
+        task_id="record_pipeline_run_summary",
+        trigger_rule="all_done",
+        multiple_outputs=False,
+    )
     def record_pipeline_run_summary_task(
         check_ctx: dict[str, object],
         gold_ctx: dict[str, object] | None = None,
