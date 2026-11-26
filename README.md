@@ -44,7 +44,7 @@ The data pipeline is the core of the project. The web app is the layer users int
 |---|---------|---------|
 | 1 | Multi-criteria search and filtering | Country, city, locality, canonical cuisine, cost for two (original currency + batch-pinned USD), price tier, minimum rating |
 | 2 | Interactive map | Restaurants as markers (`st.map` / `st.pydeck_chart`, or approved map component), details on selection, paired with a tabular view |
-| 3 | NLP search | Free text is turned into validated `SearchParams` through a Hugging Face model (5s timeout, rule-based fallback), then run as parameterized SQL |
+| 3 | NLP search | Free text (and stateless multi-turn follow-ups) is turned into validated `SearchParams` via a two-tier Hugging Face pipeline (`all-MiniLM-L6-v2` ONNX semantic hybrid always-on + optional `InferenceClient` LLM with 5s timeout and off-topic/location guardrails), then run as parameterized SQL |
 
 Out of scope for now: owner accounts, B2B matching, in-app reviews, coordinate/locality imputation (see [`docs/SRS.md`](docs/SRS.md), section 9).
 
@@ -87,7 +87,7 @@ Details and diagrams: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 | Orchestration | Apache Airflow 3.x (local Docker first; Azure Linux VM Should) | Must (DAG), Should (VM) |
 | Backend | FastAPI | Must |
 | Web presentation | Streamlit 1.67.x (Chrome, Edge, Firefox; PC & ~375 px mobile) | Must |
-| NLP | Hugging Face Inference Providers (5s timeout), with rule-based fallback | Must |
+| NLP | Hugging Face `all-MiniLM-L6-v2` ONNX semantic hybrid (always-on, \$0) + `InferenceClient` LLM tier (5s timeout), off-topic guardrails, and multi-turn follow-up refinement | Must |
 | Secrets & config | `.env` / GitHub Secrets / Azure Key Vault + `config/settings.toml` + `constants.py` | Must (env/TOML), Should (Key Vault) |
 | Hosting | Azure App Service (FastAPI and Streamlit co-deployed) | Must |
 | Monitoring and networking | JSON structured logs, `/api/health`, Azure Monitor / VNet | Must (logs/health), Could (Monitor/VNet) |

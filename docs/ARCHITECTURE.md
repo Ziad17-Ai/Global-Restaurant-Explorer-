@@ -558,7 +558,7 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | ---- | ---------- | ------------ | ------ |
 | D-1 | Additional source(s) | S1 | Open; the current increment uses Zomato only |
 | D-2 | Airflow hosting | S2 | Open |
-| D-3 | Hugging Face model and provider | S3 | Open |
+| D-3 | Hugging Face model and provider | S3 | Closed: `sentence-transformers/all-MiniLM-L6-v2` ONNX semantic hybrid always-on (`$0`, `30/30` Spike S3, `P95=89.7 ms`, `+185.7 MB RSS`) + `HuggingFaceAdapter` (`Qwen/Qwen3-32B`, `provider="auto"`) ready for free custom provider keys |
 | D-4 | Cross-source matching method | Second source | Open; `match_group_id` kept as a placeholder |
 | D-5 | Spatial storage and indexing | | Closed: `POINT SRID 4326` with a spatial index in Gold (`CODE_STYLE.md`, section 4) |
 | D-8 | Cross-source enrichment (matched records enrich each other, or stay separate) | Second source | Deferred, low priority |
@@ -571,4 +571,5 @@ FastAPI generates interactive API documentation automatically, which can serve a
 | 2026-10-30 | v0.1 created |
 | 2026-11-20 | v0.3: adopted Streamlit as the primary web presentation framework and updated application and deployment views |
 | 2026-11-23 | v0.4: codified Option A data access (Streamlit accesses data exclusively via FastAPI over HTTP through `web/streamlit/api_client.py`, holding no database credentials); updated component view, security notes, and status header |
+| 2026-11-26 | v0.5: closed D-3 / Spike S3 with `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` two-tier NLP, off-topic domain gate, and stateless `previous_params` follow-up refinement |
 | 2026-11-24 | v0.5: design scope and capacity (100K restaurants, 5-20 users, 95% availability); per-source schedules with check-before-download and Kaggle API fetch; incremental loads (FR-D7 Must); 15% quality gate; ERD extended (currency and USD fields, `record_hash`, `last_seen_batch_id`, batch version and checksum, run outcome counts, issue severity, cuisine group); enrichment and inference section; configuration and secrets split; Airflow `AIRFLOW_CONN_*` connections; JSON logs, alert thresholds, 7-day freshness; `GET /api/health`; pipeline status promoted to Should; API change policy; supported browsers; D-5 closed; D-8 and D-9 added |

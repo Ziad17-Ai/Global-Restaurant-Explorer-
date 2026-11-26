@@ -98,7 +98,7 @@ flowchart LR
 | Preconditions | Database loaded; NLP adapter configured |
 | Trigger | User submits a free-text request |
 | Main flow | 1. Streamlit sends the text to the backend. 2. Backend sends it to the NLP adapter (5-second timeout). 3. Adapter returns structured parameters (country, city, cuisine, price, rating, locality). 4. Backend validates the parameters against the schema and known canonical vocabulary (`docs/CUISINE_VOCABULARY.md`). 5. Backend runs a parameterized query. 6. Streamlit shows results, map markers, and the interpreted filters. |
-| Alternate flows | A1. Service fails or times out: use the rule-based parser. A2. Output invalid: discard and use the rule-based parser. A3. Request ambiguous or unsupported: ask the user to clarify. A4. No results: suggest relaxing filters. |
+| Alternate flows | A1. Remote LLM service fails, lacks credits, or times out: fall back to the local Hugging Face `all-MiniLM-L6-v2` ONNX semantic hybrid + deterministic rules. A2. Output invalid: discard and use local fallback. A3. Request off-topic, ambiguous, or in an unsupported area: ask the user to clarify (`needs_clarification`). A4. Follow-up prompt refines prior `previous_params` statelessly until reset. A5. No results: suggest relaxing filters. |
 | Postconditions | Results shown; interpreted filters visible |
 | Notes | The model never produces executable SQL. Parameters are its only output. User query logs are truncated to 220 characters. |
 
@@ -134,7 +134,7 @@ flowchart LR
 | FR-N2 | Translate requests into validated structured parameters checked against known locations and canonical cuisines | Must | US-05 |
 | FR-N3 | Show interpreted filters to the user | Should | US-06 |
 | FR-N4 | Ask for clarification when a request is ambiguous or unsupported | Should | US-06 |
-| FR-N5 | Fall back to a rule-based parser if the service fails, exceeds the 5-second timeout, or returns invalid output | Must | US-05 |
+| FR-N5 | Fall back to the local Hugging Face ONNX semantic hybrid + deterministic rule-based parser if the remote service fails, exceeds the 5-second timeout, or returns invalid output | Must | US-05 |
 | FR-N6 | Never execute model-generated SQL; use parameterized queries only | Must | US-05 |
 | FR-N7 | Accept Arabic requests | Could | US-13 |
 | **Data pipeline** | | | |
@@ -185,7 +185,7 @@ Targets are initial baselines validated during implementation and evaluation.
 | ---- | ---------- | ----------------- |
 | OI-1 | Which additional source(s) for Increment 2 | Spike S1 (`docs/DATA_SOURCES.md`) |
 | OI-2 | Airflow hosting (local Docker vs. Azure Linux VM) | Spike S2 |
-| OI-3 | Hugging Face model and provider | Spike S3 |
+| OI-3 | Hugging Face model and provider | Closed (Spike S3: `all-MiniLM-L6-v2` ONNX semantic hybrid + `InferenceClient` tier) |
 | OI-4 | Azure access, credits, cost | Spike S4 |
 | OI-5 | Target countries and cities for the demo | Zomato cities in Increment 1; revisit with Source 2 |
 | OI-6 | Handling mixed currencies | **Closed:** keep original amount + ISO 4217 code and compute batch-pinned `avg_cost_for_two_usd` (`CODE_STYLE.md` §2) |
