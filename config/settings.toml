@@ -46,8 +46,12 @@ file_name = "zomato.csv"
 file_encoding = "latin-1"                                 # confirm (docs/DATA_SOURCES.md, DS-2)
 
 [nlp]
-model_id = "replace_after_spike_s3"     # decision D-3
-provider = "replace_after_spike_s3"
+model_id = "Qwen/Qwen3-32B"
+provider = "auto"
+semantic_model_id = "sentence-transformers/all-MiniLM-L6-v2"
+semantic_enabled = true
+semantic_cuisine_threshold = 0.48
+semantic_price_threshold = 0.44
 timeout_seconds = 5
 max_input_chars = 500
 max_output_tokens = 256
