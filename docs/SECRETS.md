@@ -134,7 +134,7 @@ Implementation pattern (finalized during refactoring): a `pydantic-settings` `Ba
 | Environment | Secrets and environment-specific values | Tunable settings |
 | --- | --- | --- |
 | Local | `.env` | `config/settings.toml` |
-| CI (GitHub Actions) | Repository **Secrets** for secrets; repository **Variables** for non-secret environment values; set in the workflow `env:` block | `config/settings.toml` (plus `SECTION_KEY` overrides if a test needs them) |
+| CI / CD (GitHub Actions) | **Passwordless OIDC** (`id-token: write`): only 3 non-password identifiers in Repository **Secrets** (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) plus optional Repository **Variables** (`ACR_NAME`, `AZURE_RESOURCE_GROUP`) for forks. Runtime DB/API secrets are never stored in GitHub | `config/settings.toml` (plus `SECTION_KEY` overrides if a test needs them) |
 | Production: Azure Container Apps (`ca-eatosphere-backend`, `ca-eatosphere-streamlit`) | Container env vars; backend secrets via Key Vault references (`keyvaultref:...` with Managed Identity `id-eatosphere-prod`); Streamlit holds zero DB credentials | `config/settings.toml` baked into container image |
 | Production: ACA Scheduled Job (`job-eatosphere-etl`) | Key Vault values (`keyvaultref:...`) injected as environment variables into the `@weekly` ETL job | `config/settings.toml` baked into container image |
 | Local Docker: Airflow 3.x | `AIRFLOW_CONN_*` JSON connection strings composed from `.env` in `docker-compose.yml` | `config/settings.toml` mounted/baked with DAGs |

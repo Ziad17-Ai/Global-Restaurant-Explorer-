@@ -1,3 +1,30 @@
+# ==============================================================================
+# Build, Push, and Deploy to Azure Container Apps (OIDC Passwordless CI/CD)
+# ==============================================================================
+#
+# Procedure:
+#   1. build-and-push: Logs into Azure via OIDC, logs into ACR, and builds/pushes
+#      linux/amd64 images (backend, streamlit, pipeline) tagged with :<git-sha>
+#      and :latest using GitHub Actions layer caching.
+#   2. deploy: Runs ONLY on pushes to `main` OR manual `workflow_dispatch` with
+#      `deploy_to_azure=true`. Updates the Container Apps and Scheduled Job to
+#      the immutable :<git-sha> image tag.
+#
+# Security & Required GitHub Configuration:
+#   - Passwordless OIDC (`permissions: id-token: write`): GitHub exchanges a
+#     short-lived OIDC JWT for an Azure AD token for Managed Identity
+#     `id-eatosphere-prod` (requires federated credentials for this repo/branch,
+#     `AcrPush` on ACR, and `Contributor` on the target resource group).
+#   - Required Repository Secrets (3 identifiers only — zero passwords/keys):
+#       AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   - Optional Repository Variables (for forks with custom resource names):
+#       ACR_NAME (default: acreatosphere2611)
+#       AZURE_RESOURCE_GROUP (default: rg-eatosphere-prod)
+#   - Runtime Secret Isolation: Updating `--image` never passes or exposes
+#     application secrets in GitHub; DB, Storage, Kaggle, and HF secrets remain
+#     in Azure Key Vault and stay bound via Managed Identity (`Key Vault Secrets User`).
+# ==============================================================================
+
 name: Build, Push, and Deploy to Azure
 
 on:
