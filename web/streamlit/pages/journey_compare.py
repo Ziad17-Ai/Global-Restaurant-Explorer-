@@ -22,8 +22,10 @@ from web.streamlit.components.maps_and_charts import render_journey_route_map
 from web.streamlit.components.state import (
     add_to_compare,
     add_to_journey,
+    clear_compare,
     ensure_session_state,
     load_restaurant_detail,
+    remove_from_compare,
 )
 from web.streamlit.constants import MAX_COMPARE_ITEMS, MIN_JOURNEY_STOPS
 
@@ -37,6 +39,7 @@ st.caption(
 
 saved_map: dict[int, RestaurantItem] = st.session_state["saved_restaurants"]
 compare_ids: list[int] = st.session_state["compare_ids"]
+compare_items: dict[int, RestaurantItem] = st.session_state["compare_items"]
 journey_stops: list[RestaurantItem] = st.session_state["journey_stops"]
 
 compare_tab, journey_tab = st.tabs(
@@ -81,6 +84,9 @@ with compare_tab:
     else:
         resolved_items: list[RestaurantItem] = []
         for rid in compare_ids:
+            if rid in compare_items:
+                resolved_items.append(compare_items[rid])
+                continue
             if rid in saved_map:
                 resolved_items.append(saved_map[rid])
                 continue
@@ -126,18 +132,19 @@ with compare_tab:
 
             with st.container(horizontal=True):
                 for item in resolved_items:
-                    if st.button(
+                    st.button(
                         f"Remove {item['name']}",
                         key=f"cmp_remove_{item['restaurant_id']}",
                         icon=":material/close:",
-                    ):
-                        compare_ids.remove(item["restaurant_id"])
-                        st.rerun()
-                if st.button(
-                    "Clear all", key="cmp_clear_all", icon=":material/delete:"
-                ):
-                    st.session_state["compare_ids"] = []
-                    st.rerun()
+                        on_click=remove_from_compare,
+                        args=(item["restaurant_id"],),
+                    )
+                st.button(
+                    "Clear all",
+                    key="cmp_clear_all",
+                    icon=":material/delete:",
+                    on_click=clear_compare,
+                )
 
 with journey_tab:
     if saved_map:
@@ -176,7 +183,7 @@ with journey_tab:
     else:
         st.subheader("Itinerary order")
         for idx, stop in enumerate(journey_stops):
-            with st.container(border=True):
+            with st.container(border=True, key=f"card_jrn_{stop['restaurant_id']}"):
                 info_col, ctrl_col = st.columns(
                     [3, 2], wrap=True, vertical_alignment="center"
                 )
@@ -198,6 +205,13 @@ with journey_tab:
                     )
                     st.caption(f"{stop_rating} · {stop_cost}")
                 with ctrl_col, st.container(horizontal=True):
+                    stop_dir_url = build_directions_url(stop)
+                    if stop_dir_url:
+                        st.link_button(
+                            "Directions",
+                            url=stop_dir_url,
+                            icon=":material/directions:",
+                        )
                     if idx > 0 and st.button(
                         "Up",
                         key=f"jrn_up_{stop['restaurant_id']}",

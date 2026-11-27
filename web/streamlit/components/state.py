@@ -27,10 +27,10 @@ def ensure_session_state() -> None:
         st.session_state["saved_restaurants"] = {}
     if "compare_ids" not in st.session_state:
         st.session_state["compare_ids"] = []
+    if "compare_items" not in st.session_state:
+        st.session_state["compare_items"] = {}
     if "journey_stops" not in st.session_state:
         st.session_state["journey_stops"] = []
-    if "selected_restaurant_id" not in st.session_state:
-        st.session_state["selected_restaurant_id"] = None
     if "explore_offset" not in st.session_state:
         st.session_state["explore_offset"] = 0
     if "map_focus_restaurant" not in st.session_state:
@@ -48,48 +48,99 @@ def ensure_session_state() -> None:
 def toggle_saved_restaurant(restaurant: RestaurantItem) -> None:
     """Bookmark or unbookmark a restaurant in session state."""
     ensure_session_state()
-    saved: dict[int, RestaurantItem] = st.session_state["saved_restaurants"]
+    saved = dict(st.session_state["saved_restaurants"])
     rid = restaurant["restaurant_id"]
     if rid in saved:
         del saved[rid]
-        st.toast(f"Removed {restaurant['name']} from Saved.")
+        st.session_state["saved_restaurants"] = saved
+        st.toast(
+            f"Removed {restaurant['name']} from Saved.",
+            icon=":material/bookmark_remove:",
+        )
     else:
         saved[rid] = restaurant
-        st.toast(f"Saved {restaurant['name']}.")
+        st.session_state["saved_restaurants"] = saved
+        st.toast(
+            f"Saved {restaurant['name']}. Find it in Journey & Compare → "
+            "add stops or compare from Saved.",
+            icon=":material/bookmark_added:",
+        )
 
 
 def add_to_compare(restaurant: RestaurantItem) -> None:
     """Add or remove a restaurant from the side-by-side comparison tray."""
     ensure_session_state()
-    saved: dict[int, RestaurantItem] = st.session_state["saved_restaurants"]
-    compare_ids: list[int] = st.session_state["compare_ids"]
+    compare_ids = list(st.session_state["compare_ids"])
+    compare_items = dict(st.session_state["compare_items"])
     rid = restaurant["restaurant_id"]
     if rid in compare_ids:
         compare_ids.remove(rid)
-        st.toast(f"Removed {restaurant['name']} from Compare.")
+        compare_items.pop(rid, None)
+        st.session_state["compare_ids"] = compare_ids
+        st.session_state["compare_items"] = compare_items
+        st.toast(
+            f"Removed {restaurant['name']} from Compare.",
+            icon=":material/compare_arrows:",
+        )
         return
     if len(compare_ids) >= MAX_COMPARE_ITEMS:
-        st.toast(f"Compare tray supports up to {MAX_COMPARE_ITEMS} venues.")
+        st.toast(
+            f"Compare tray supports up to {MAX_COMPARE_ITEMS} venues.",
+            icon=":material/info:",
+        )
         return
-    compare_ids.append(rid)
-    if rid not in saved:
-        saved[rid] = restaurant
-    st.toast(f"Added {restaurant['name']} to Compare.")
+    updated_ids = [*compare_ids, rid]
+    compare_items[rid] = restaurant
+    st.session_state["compare_ids"] = updated_ids
+    st.session_state["compare_items"] = compare_items
+    st.toast(
+        f"Added {restaurant['name']} to Compare "
+        f"({len(updated_ids)}/{MAX_COMPARE_ITEMS}).",
+        icon=":material/compare_arrows:",
+    )
+
+
+def remove_from_compare(restaurant_id: int) -> None:
+    """Remove a restaurant from the side-by-side comparison tray by ID."""
+    ensure_session_state()
+    compare_ids = [
+        rid for rid in st.session_state["compare_ids"] if rid != restaurant_id
+    ]
+    compare_items = dict(st.session_state["compare_items"])
+    compare_items.pop(restaurant_id, None)
+    st.session_state["compare_ids"] = compare_ids
+    st.session_state["compare_items"] = compare_items
+
+
+def clear_compare() -> None:
+    """Clear all restaurants from the side-by-side comparison tray."""
+    ensure_session_state()
+    st.session_state["compare_ids"] = []
+    st.session_state["compare_items"] = {}
 
 
 def add_to_journey(restaurant: RestaurantItem) -> None:
     """Append a restaurant to the ordered Journey Planner itinerary."""
     ensure_session_state()
-    stops: list[RestaurantItem] = st.session_state["journey_stops"]
+    stops = list(st.session_state["journey_stops"])
     rid = restaurant["restaurant_id"]
     if any(stop["restaurant_id"] == rid for stop in stops):
-        st.toast(f"{restaurant['name']} is already in your Journey.")
+        st.toast(
+            f"{restaurant['name']} is already in your Journey.",
+            icon=":material/route:",
+        )
         return
     if len(stops) >= MAX_JOURNEY_STOPS:
-        st.toast(f"Journey Planner supports up to {MAX_JOURNEY_STOPS} stops.")
+        st.toast(
+            f"Journey Planner supports up to {MAX_JOURNEY_STOPS} stops.",
+            icon=":material/info:",
+        )
         return
-    stops.append(restaurant)
-    st.toast(f"Added {restaurant['name']} to Journey.")
+    st.session_state["journey_stops"] = [*stops, restaurant]
+    st.toast(
+        f"Added {restaurant['name']} to Journey.",
+        icon=":material/route:",
+    )
 
 
 def focus_on_map(restaurant: RestaurantItem) -> None:

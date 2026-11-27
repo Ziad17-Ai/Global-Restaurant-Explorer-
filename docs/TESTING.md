@@ -12,7 +12,7 @@ Every pull request and push runs four mandatory quality gates (configured in [`p
 | **Formatting** | `ruff format --check pipeline web tests` | 88-char lines, zero formatting drift |
 | **Linting** | `ruff check pipeline web tests` | PEP 8, imports, Google docstrings, McCabe <= 18, no `print` (`T20`), timezone-aware UTC (`DTZ`), `pathlib` (`PTH`) |
 | **Static Typing** | `mypy .` | Strict typed signatures across `pipeline/`, `web/`, and `tests/` |
-| **Test Suite** | `pytest -v` | All 95 unit, architecture boundary, DAG import, API, NLP, spatial, and Streamlit `AppTest` smoke tests pass |
+| **Test Suite** | `pytest -v` | All 97 unit, architecture boundary, DAG import, API, NLP, spatial, and Streamlit `AppTest` smoke tests pass |
 
 > **Note:** Scope Ruff to `pipeline web tests` rather than `.` so Markdown code snippets in `docs/` are not flagged, and `_incoming/` / `.agents/` remain excluded.
 
@@ -97,6 +97,8 @@ Because `AppTest` does not validate CSS layout or WebGL/canvas tile rendering, r
 
 - [ ] **All 7 pages** (`Explore`, `Map Explorer`, `NL Search`, `Analytics Briefing`, `Destination Guides`, `Journey & Compare`, `Pipeline Status`) render with zero browser console errors.
 - [ ] **Data honesty:** Unrated venues display `Unrated` (never `0`), costs display original ISO currency alongside USD, source + license attribution is visible, and Gold freshness/staleness banner behaves accurately.
-- [ ] **Map Explorer:** All 5 native Plotly in-map styles (`Standard (OSM)`, `Terrain`, `Satellite`, `Topographic`, `Dark`) load tiles with zero console errors and paired tabular results.
+- [ ] **Explore & Card Actions:** Restaurant cards show accessible titles, location shorthand badges, ellipsized 1-line addresses, and no `Details`/`Directions` buttons; sequential `Save` and `Compare` clicks update sidebar counters, button labels, and `Journey & Compare` in real time.
+- [ ] **Map Explorer:** All 5 native Plotly in-map styles (`Standard (OSM)`, `Terrain`, `Satellite`, `Topographic`, `Dark`) load tiles with zero console errors, clicking a marker (or focusing via `Map`) opens the Map Detail Card with a clickable `Directions` button, and the `Data table` tab includes `Directions` links.
+- [ ] **Journey & Compare:** Compare table reflects real-time additions/removals, and Journey stops include per-stop `Directions` buttons alongside route legs.
 - [ ] **NL Search:** Parses dining queries (`huggingface_semantic`), refines stateless follow-up prompts, clarifies unknown locations, and cleanly rejects off-topic prompts.
 - [ ] **Pipeline Status:** Displays `data_mode: mysql`, fresh status, latest Zomato run metrics, and per-rule quality breakdown.

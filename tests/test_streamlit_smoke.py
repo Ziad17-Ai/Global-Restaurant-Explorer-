@@ -347,10 +347,15 @@ def stub_streamlit_api_client(
 
 
 def test_app_entrypoint_and_navigation_render_without_exceptions() -> None:
-    """Verify `app.py` entrypoint and page switching run cleanly with zero errors."""
+    """Verify `app.py` entrypoint, sidebar categories, and page switching."""
     at = AppTest.from_file(str(STREAMLIT_APP), default_timeout=15).run()
     assert not at.exception
     assert at.title[0].value == "Explore Restaurants"
+
+    sidebar_md = "\n".join(el.value for el in at.sidebar.markdown)
+    assert "Discover" in sidebar_md
+    assert "Intelligence" in sidebar_md
+    assert "Plan & Operations" in sidebar_md
 
     for page_file in PAGE_FILES[1:]:
         at.switch_page(f"pages/{page_file}").run()
@@ -382,6 +387,71 @@ def test_explore_renders_unrated_multicurrency_and_staleness() -> None:
     assert "$13.20 USD" in markdown_blob
     assert "Zomato · CC0 1.0" in caption_blob
     assert "7-day freshness threshold" in warning_blob
+
+    button_labels = [btn.label for btn in at.button]
+    assert "Details" not in button_labels
+    assert "Directions" not in button_labels
+
+
+def test_explore_sequential_save_and_compare_realtime_state() -> None:
+    """Verify sequential Save and Compare card clicks update state in real time."""
+    at = AppTest.from_file(
+        str(PAGES_DIR / "explore_restaurants.py"),
+        default_timeout=15,
+    ).run()
+    assert not at.exception
+
+    # Save first and second restaurants sequentially
+    next(btn for btn in at.button if btn.key == "explore_save_101").click().run()
+    assert not at.exception
+    assert set(at.session_state["saved_restaurants"].keys()) == {101}
+    assert any("Journey & Compare" in t.value for t in at.toast)
+
+    next(btn for btn in at.button if btn.key == "explore_save_102").click().run()
+    assert not at.exception
+    assert set(at.session_state["saved_restaurants"].keys()) == {101, 102}
+    saved_101 = next(btn for btn in at.button if btn.key == "explore_save_101")
+    saved_102 = next(btn for btn in at.button if btn.key == "explore_save_102")
+    assert saved_101.label == "Saved"
+    assert saved_102.label == "Saved"
+
+    # Compare add/remove sequentially without polluting saved_restaurants
+    at2 = AppTest.from_file(
+        str(PAGES_DIR / "explore_restaurants.py"),
+        default_timeout=15,
+    ).run()
+    next(btn for btn in at2.button if btn.key == "explore_cmp_101").click().run()
+    assert at2.session_state["compare_ids"] == [101]
+    assert set(at2.session_state["compare_items"].keys()) == {101}
+    assert at2.session_state["saved_restaurants"] == {}
+
+    next(btn for btn in at2.button if btn.key == "explore_cmp_102").click().run()
+    assert at2.session_state["compare_ids"] == [101, 102]
+    assert set(at2.session_state["compare_items"].keys()) == {101, 102}
+    assert (
+        next(btn for btn in at2.button if btn.key == "explore_cmp_102").label
+        == "Comparing"
+    )
+
+    # Remove 101 sequentially
+    next(btn for btn in at2.button if btn.key == "explore_cmp_101").click().run()
+    assert at2.session_state["compare_ids"] == [102]
+    assert set(at2.session_state["compare_items"].keys()) == {102}
+
+
+def test_map_explorer_renders_focused_venue_detail_card() -> None:
+    """Verify Map Explorer renders a venue detail card with actions when focused."""
+    sample = _sample_restaurants()[0]
+    at = AppTest.from_file(
+        str(PAGES_DIR / "map_explorer.py"),
+        default_timeout=15,
+    )
+    at.session_state["map_focus_restaurant"] = sample
+    at.run()
+    assert not at.exception
+    subheaders = [el.value for el in at.subheader]
+    assert any("Maison Thomas" in s for s in subheaders)
+    assert any(btn.key == "map_card_save_101" for btn in at.button)
 
 
 def test_nl_search_displays_interpreted_params_fallback_and_clarification() -> None:
@@ -626,6 +696,7 @@ def test_map_basemaps_and_theme_consistent_marker_colors() -> None:
     dark_df = build_map_points_df(sample_points, dark_mode=True)
     assert light_df.iloc[0]["marker_color"] == COLOR_HIGH_RATING
     assert dark_df.iloc[0]["marker_color"] == COLOR_DARK_HIGH_RATING
+    assert "google.com/maps/dir/" in light_df.iloc[0]["directions_url"]
     assert get_rating_color_map(dark_mode=False)["4.0+"] == COLOR_HIGH_RATING
     assert get_rating_color_map(dark_mode=True)["4.0+"] == COLOR_DARK_HIGH_RATING
     assert COLOR_HIGH_RATING != COLOR_DARK_HIGH_RATING

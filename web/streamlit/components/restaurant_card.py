@@ -6,7 +6,6 @@ import streamlit as st
 
 from web.streamlit.api_client import RestaurantItem
 from web.streamlit.components.formatters import (
-    build_directions_url,
     escape_markdown,
     format_cost,
     format_distance_m,
@@ -21,32 +20,56 @@ from web.streamlit.components.state import (
     focus_on_map,
     toggle_saved_restaurant,
 )
+from web.streamlit.constants import RATING_TIER_HIGH, RATING_TIER_MID
+
+_MAX_CARD_CUISINES = 4
 
 
-def _format_location_line(restaurant: RestaurantItem) -> str:
-    parts = [
-        restaurant.get("locality") or "",
-        restaurant.get("city_name") or "",
-        restaurant.get("country_name") or "",
-    ]
-    return ", ".join(part for part in parts if part.strip())
+def format_location_shorthand(restaurant: RestaurantItem) -> str:
+    """Build a concise, scannable location shorthand for card badges."""
+    locality = (restaurant.get("locality") or "").strip()
+    city = (restaurant.get("city_name") or "").strip()
+    country = (restaurant.get("country_name") or "").strip()
+
+    local_parts = [part for part in (locality, city) if part]
+    if local_parts and country:
+        return f"{', '.join(local_parts)} · {country}"
+    if local_parts:
+        return ", ".join(local_parts)
+    return country or "Location unlisted"
+
+
+def _rating_badge_color(rating: float | None) -> str:
+    if rating is None:
+        return "gray"
+    if rating >= RATING_TIER_HIGH:
+        return "green"
+    if rating >= RATING_TIER_MID:
+        return "orange"
+    return "red"
+
+
+def _format_cuisines_summary(cuisines: list[str]) -> str:
+    if not cuisines:
+        return "Cuisine unlisted"
+    visible = cuisines[:_MAX_CARD_CUISINES]
+    summary = ", ".join(visible)
+    remaining = len(cuisines) - len(visible)
+    if remaining > 0:
+        summary = f"{summary} +{remaining} more"
+    return summary
 
 
 def render_restaurant_card(
     restaurant: RestaurantItem,
     *,
     key_prefix: str,
-    show_details_button: bool = False,
-) -> bool:
+) -> None:
     """Render a single restaurant card inside a bordered container.
 
     Args:
         restaurant: Restaurant payload returned by the FastAPI backend.
         key_prefix: Unique prefix to avoid duplicate widget keys across lists.
-        show_details_button: Whether to include a Details button returning True.
-
-    Returns:
-        True if the user clicked the Details button on this run, else False.
     """
     ensure_session_state()
     rid = restaurant["restaurant_id"]
@@ -58,25 +81,22 @@ def render_restaurant_card(
     is_comparing = rid in compare_ids
     in_journey = any(stop["restaurant_id"] == rid for stop in journey_stops)
 
-    details_clicked = False
-    with st.container(border=True):
-        st.markdown(f"**{escape_markdown(restaurant['name'])}**")
-        location_line = _format_location_line(restaurant)
-        if location_line:
-            st.text(location_line)
-
-        cuisines = restaurant.get("cuisines") or []
-        cuisines_text = (
-            escape_markdown(", ".join(cuisines)) if cuisines else "Cuisine unlisted"
+    with st.container(border=True, key=f"card_{key_prefix}_{rid}"):
+        st.subheader(escape_markdown(restaurant["name"]), anchor=False)
+        st.badge(
+            format_location_shorthand(restaurant),
+            icon=":material/location_on:",
+            color="gray",
         )
-        st.caption(cuisines_text)
 
-        rating_str = format_rating(
-            restaurant.get("rating"),
-            restaurant.get("rating_text"),
-        )
+        rating = restaurant.get("rating")
+        rating_str = format_rating(rating, restaurant.get("rating_text"))
+        badge_color = _rating_badge_color(rating)
         votes = restaurant.get("votes")
-        votes_str = f" · {votes:,} votes" if votes is not None else ""
+        votes_label = (
+            f"{votes:,} votes" if votes is not None and votes > 0 else "No ratings yet"
+        )
+
         cost_str = format_cost(
             restaurant.get("avg_cost_for_two"),
             restaurant.get("currency_code"),
@@ -84,30 +104,38 @@ def render_restaurant_card(
         )
         tier_str = format_price_tier(restaurant.get("price_range"))
 
-        st.markdown(
-            f"**Rating:** {escape_markdown(rating_str)}{votes_str}  \n"
-            f"**Cost:** {escape_markdown(cost_str)} · {escape_markdown(tier_str)}"
+        rating_col, cost_col = st.columns(2, wrap=True, vertical_alignment="top")
+        with rating_col:
+            st.markdown(f":{badge_color}-badge[{escape_markdown(rating_str)}]")
+            st.caption(votes_label)
+        with cost_col:
+            st.markdown(f"**{escape_markdown(cost_str)}**")
+            st.caption(tier_str)
+
+        cuisines_summary = _format_cuisines_summary(restaurant.get("cuisines") or [])
+        st.caption(
+            f":material/restaurant: {escape_markdown(cuisines_summary)}",
+            wrap=False,
         )
 
-        service_flags: list[str] = []
+        address = (restaurant.get("address") or "").strip()
+        if address:
+            st.text(address, wrap=False)
+
+        footer_parts: list[str] = []
         if restaurant.get("has_table_booking"):
-            service_flags.append("Table booking")
+            footer_parts.append("Table booking")
         if restaurant.get("has_online_delivery"):
-            service_flags.append("Online delivery")
+            footer_parts.append("Online delivery")
         distance_label = format_distance_m(restaurant.get("distance_m"))
         if distance_label:
-            service_flags.append(f"{distance_label} away")
-        if service_flags:
-            st.caption(" · ".join(service_flags))
-
-        if restaurant.get("address"):
-            st.text(restaurant["address"])
-
+            footer_parts.append(f"{distance_label} away")
         attribution = format_source_attribution(
             restaurant.get("source_name"),
             restaurant.get("source_license"),
         )
-        st.caption(f"Source: {escape_markdown(attribution)}")
+        footer_parts.append(f"Source: {attribution}")
+        st.caption(escape_markdown(" · ".join(footer_parts)))
 
         with st.container(horizontal=True):
             if st.button(
@@ -123,42 +151,28 @@ def render_restaurant_card(
             save_icon = (
                 ":material/bookmark_added:" if is_saved else ":material/bookmark:"
             )
-            if st.button(
+            st.button(
                 save_label,
                 key=f"{key_prefix}_save_{rid}",
                 icon=save_icon,
-            ):
-                toggle_saved_restaurant(restaurant)
+                on_click=toggle_saved_restaurant,
+                args=(restaurant,),
+            )
 
             compare_label = "Comparing" if is_comparing else "Compare"
-            if st.button(
+            st.button(
                 compare_label,
                 key=f"{key_prefix}_cmp_{rid}",
                 icon=":material/compare_arrows:",
-            ):
-                add_to_compare(restaurant)
+                on_click=add_to_compare,
+                args=(restaurant,),
+            )
 
             journey_label = "In Journey" if in_journey else "+Journey"
-            if st.button(
+            st.button(
                 journey_label,
                 key=f"{key_prefix}_jrn_{rid}",
                 icon=":material/route:",
-            ):
-                add_to_journey(restaurant)
-
-            if show_details_button and st.button(
-                "Details",
-                key=f"{key_prefix}_det_{rid}",
-                icon=":material/info:",
-            ):
-                details_clicked = True
-
-            directions_url = build_directions_url(restaurant)
-            if directions_url:
-                st.link_button(
-                    "Directions",
-                    url=directions_url,
-                    icon=":material/directions:",
-                )
-
-    return details_clicked
+                on_click=add_to_journey,
+                args=(restaurant,),
+            )

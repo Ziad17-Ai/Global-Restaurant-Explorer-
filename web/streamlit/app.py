@@ -5,6 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from web.streamlit.api_client import APIError
+from web.streamlit.components.card_styles import inject_card_surface_style
 from web.streamlit.components.state import ensure_session_state, load_pipeline_status
 from web.streamlit.constants import APP_NAME, APP_SUBTITLE
 
@@ -16,6 +17,7 @@ st.set_page_config(
 )
 
 ensure_session_state()
+inject_card_surface_style()
 
 pages = {
     "Discover": [
@@ -90,24 +92,42 @@ pages = {
     ],
 }
 
-current_page = st.navigation(pages, position="sidebar")
+_CATEGORY_COLORS: dict[str, str] = {
+    "Discover": "primary",
+    "Intelligence": "green",
+    "Plan & Operations": "orange",
+}
+
+current_page = st.navigation(pages, position="hidden")
 
 with st.sidebar:
+    st.subheader(APP_NAME, icon=":material/restaurant:", anchor=False)
     st.caption(APP_SUBTITLE)
+
+    for category_name, category_pages in pages.items():
+        category_color = _CATEGORY_COLORS.get(category_name, "primary")
+        st.markdown(f"#### :{category_color}[{category_name}]")
+        for page in category_pages:
+            st.page_link(
+                page,
+                label=page.title,
+                icon=page.icon,
+                width="stretch",
+            )
+
     st.divider()
     saved_count = len(st.session_state["saved_restaurants"])
     compare_count = len(st.session_state["compare_ids"])
     journey_count = len(st.session_state["journey_stops"])
-    st.caption(
-        f"Saved: {saved_count} · Compare: {compare_count} · Journey: {journey_count}"
+    st.markdown(
+        f"**Saved:** {saved_count} · **Compare:** {compare_count} · "
+        f"**Journey:** {journey_count}"
     )
     try:
         pipeline_state = load_pipeline_status()
         freshness_label = "Stale (>7d)" if pipeline_state.get("is_stale") else "Fresh"
-        st.caption(
-            f"Data status: {freshness_label} · "
-            f"Mode: {pipeline_state.get('data_mode', 'database')}"
-        )
+        data_mode = pipeline_state.get("data_mode", "database")
+        st.caption(f"Data status: {freshness_label} · Mode: {data_mode}")
     except APIError:
         st.caption("Data status: unavailable")
 

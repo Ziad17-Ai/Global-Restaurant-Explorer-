@@ -3,7 +3,7 @@ base = "light"
 font = "sans-serif"
 headingFont = "serif"
 codeFont = "monospace"
-baseFontSize = 16
+baseFontSize = 17
 baseFontWeight = 400
 metricValueFontSize = "1.75rem"
 metricValueFontWeight = 600
@@ -11,6 +11,10 @@ baseRadius = "0.25rem"
 buttonRadius = "0.25rem"
 showSidebarBorder = true
 showWidgetBorder = true
+
+[theme.sidebar]
+headingFontSizes = ["1.5rem", "1.35rem", "1.2rem", "1.1rem", "1rem", "0.9rem"]
+headingFontWeights = [700, 700, 600, 700, 600, 600]
 
 [theme.light]
 primaryColor = "#A63D2F"
@@ -35,6 +39,9 @@ headingFont = "sans-serif"
 backgroundColor = "#F1EFEA"
 secondaryBackgroundColor = "#E6E2D9"
 borderColor = "#DDD9D0"
+primaryColor = "#A63D2F"
+greenColor = "#1E4D3B"
+orangeColor = "#B45309"
 
 [theme.dark]
 primaryColor = "#C44D3D"
@@ -59,6 +66,9 @@ headingFont = "sans-serif"
 backgroundColor = "#1D1B18"
 secondaryBackgroundColor = "#292622"
 borderColor = "#33302B"
+primaryColor = "#E07A6B"
+greenColor = "#52A88A"
+orangeColor = "#E5A14B"
 
 [server]
 enableAgentApi = false

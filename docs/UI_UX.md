@@ -1,7 +1,7 @@
 # UI/UX Design Guidelines
 
-> **Status:** Draft v0.1, a living document.
-> **Last updated:** 2026-11-23
+> **Status:** Active (v0.2), a living document.
+> **Last updated:** 2026-11-27
 
 Keywords **MUST** and **SHOULD** follow their usual meaning.
 
@@ -30,7 +30,7 @@ The application uses an **Editorial / Paper & Ink** visual language with native 
 
 ## 3. Visual system and dual-theme configuration
 
-All visual theming **MUST** live in `.streamlit/config.toml` and **MUST NOT** be injected via raw HTML or CSS (`unsafe_allow_html=True`, `st.html`, or custom components are blocked by `tests/test_architecture.py`).
+All visual theming **MUST** live in `.streamlit/config.toml` and **MUST NOT** be injected via raw HTML or CSS (`unsafe_allow_html=True`, `st.html`, or custom components are blocked by `tests/test_architecture.py`). The sole allowlisted exception is [`web/streamlit/components/card_styles.py`](../web/streamlit/components/card_styles.py), which emits a static, zero-user-data `<style>` rule targeting `[class*='st-key-card_']` so restaurant cards sit on a subtly elevated surface (`#FFFFFF` in Light mode, `#22201D` in Dark mode) distinguishable from the main canvas.
 
 ### 3.1 Color tokens (Light and Dark)
 
@@ -49,7 +49,7 @@ Both themes are configured natively so users can switch between Light and Dark m
 ### 3.2 Typography and geometry
 
 * **Headings (`headingFont`):** `"serif"` in the main content area to give pages editorial structure and visual distinction without adding external font latency.
-* **Body and controls (`font`):** `"sans-serif"` for UI controls, filters, tables, and sidebar navigation (`headingFont = "sans-serif"` in sidebar sections for compact scannability).
+* **Body and controls (`font`):** `"sans-serif"` for UI controls, filters, tables, and sidebar navigation (`headingFont = "sans-serif"` in sidebar sections with bumped `headingFontSizes` and `baseFontSize = 17` for accessible scannability).
 * **Tabular and technical values (`codeFont`):** `"monospace"` for coordinates, batch/run IDs, schema keys, and raw technical metadata.
 * **Metric scale:** Keep `metricValueFontSize` restrained (`"1.75rem"`) so numeric callouts support the page rather than dominating the viewport.
 * **Geometry:** Subtle, crisp corners (`baseRadius = "0.25rem"`, `buttonRadius = "0.25rem"`) and visible structural separation (`showSidebarBorder = true`, `showWidgetBorder = true`).
@@ -64,7 +64,7 @@ base = "light"
 font = "sans-serif"
 headingFont = "serif"
 codeFont = "monospace"
-baseFontSize = 16
+baseFontSize = 17
 baseFontWeight = 400
 metricValueFontSize = "1.75rem"
 metricValueFontWeight = 600
@@ -72,6 +72,10 @@ baseRadius = "0.25rem"
 buttonRadius = "0.25rem"
 showSidebarBorder = true
 showWidgetBorder = true
+
+[theme.sidebar]
+headingFontSizes = ["1.5rem", "1.35rem", "1.2rem", "1.1rem", "1rem", "0.9rem"]
+headingFontWeights = [700, 700, 600, 700, 600, 600]
 
 [theme.light]
 primaryColor = "#A63D2F"
@@ -96,6 +100,9 @@ headingFont = "sans-serif"
 backgroundColor = "#F1EFEA"
 secondaryBackgroundColor = "#E6E2D9"
 borderColor = "#DDD9D0"
+primaryColor = "#A63D2F"
+greenColor = "#1E4D3B"
+orangeColor = "#B45309"
 
 [theme.dark]
 primaryColor = "#C44D3D"
@@ -120,17 +127,24 @@ headingFont = "sans-serif"
 backgroundColor = "#1D1B18"
 secondaryBackgroundColor = "#292622"
 borderColor = "#33302B"
+primaryColor = "#E07A6B"
+greenColor = "#52A88A"
+orangeColor = "#E5A14B"
 
 [server]
 enableAgentApi = false
 
+[client]
+showErrorLinks = false
 ```
 
 ## 4. Layout, navigation, and responsiveness
 
 Every screen **MUST** work cleanly from mobile width (~375 px) up to desktop viewports.
 
-* **Single entry and navigation:** Call `st.set_page_config` once in `web/streamlit/app.py` with `initial_sidebar_state="auto"`, and declare all navigation centrally with `st.navigation` and `st.Page`.
+* **Single entry and navigation:** Call `st.set_page_config` once in `web/streamlit/app.py` with `initial_sidebar_state="auto"`, and declare all navigation centrally with `st.navigation(pages, position="hidden")` and `st.Page`. Render the sidebar menu natively using `st.page_link(..., width="stretch")` grouped under distinct Editorial category headings (`Discover` in `primary`, `Intelligence` in `green`, `Plan & Operations` in `orange`).
+
+* **Restaurant cards and actions:** Render venue names at accessible subheader scale (`st.subheader(..., anchor=False)`), location shorthand via `st.badge(..., icon=":material/location_on:", color="gray")`, rating and cost in a clean two-column facts row, cuisines on a single line, street address as a single ellipsized line (`wrap=False`), and a 4-button real-time action bar (`Map`, `Save`, `Compare`, `+Journey`) wired with `on_click` callbacks. Saving a venue surfaces a toast pointing users to `Journey & Compare` to add stops or compare from Saved. External `Directions` buttons belong on the **Map Explorer** interactive marker/focus detail card (plus `Data table` links) and on **Journey & Compare** stop cards rather than Explore cards.
 
 * **In-page primary controls:** Because the sidebar collapses on small screens, primary search inputs, core filters, and primary actions **MUST** live inside the main page area rather than exclusively in the sidebar. Reserve the sidebar for navigation and lightweight global context (such as dataset attribution or version metadata).
 
@@ -214,3 +228,4 @@ In addition to automated `ruff`, `mypy`, `tests/test_architecture.py`, and `AppT
 | Date | Change |
 | --- | --- |
 | 2026-11-23 | v0.1 created: established Editorial / Paper & Ink dual-theme design system, reference `.streamlit/config.toml`, responsive rules, data-honesty conventions, accessibility guidelines, and pre-merge UI review checklist aligned with `CODE_STYLE.md` v0.12 and `ARCHITECTURE.md` v0.4. |
+| 2026-11-27 | v0.2 updated: bumped `baseFontSize = 17`, added `[theme.sidebar]` heading scale and category colors (`Discover`, `Intelligence`, `Plan & Operations`) via native `st.navigation(..., position="hidden")` + `st.page_link`, refined restaurant card layout (subheader title, location badge, 2-column facts, ellipsized address, 4-button `on_click` action bar, no `Details` dossier), added scoped static card-surface shading (`card_styles.py`), and moved `Directions` to Map Explorer marker/focus cards and Journey stops. |

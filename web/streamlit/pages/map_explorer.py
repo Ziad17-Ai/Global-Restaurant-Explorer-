@@ -8,6 +8,7 @@ import streamlit as st
 
 from web.streamlit.api_client import (
     APIError,
+    MapPointItem,
     MapPointsResponse,
     RestaurantItem,
 )
@@ -16,15 +17,28 @@ from web.streamlit.components.feedback import (
     render_empty_state,
     render_freshness_banner,
 )
-from web.streamlit.components.formatters import escape_markdown, is_valid_coordinate
+from web.streamlit.components.formatters import (
+    build_directions_url,
+    escape_markdown,
+    format_cost,
+    format_price_tier,
+    format_rating,
+    format_source_attribution,
+    is_valid_coordinate,
+)
 from web.streamlit.components.maps_and_charts import render_restaurant_map
+from web.streamlit.components.restaurant_card import format_location_shorthand
 from web.streamlit.components.state import (
+    add_to_compare,
+    add_to_journey,
     ensure_session_state,
     load_cities,
     load_countries,
     load_cuisines,
     load_map_points,
     load_pipeline_status,
+    load_restaurant_detail,
+    toggle_saved_restaurant,
 )
 from web.streamlit.constants import (
     DEFAULT_MAP_CENTER_LAT,
@@ -223,9 +237,141 @@ if map_resp is not None:
             icon=":material/location_off:",
         )
     else:
-        render_restaurant_map(
+        selected_rid = render_restaurant_map(
             points,
             key="map_explorer_deck",
             alt_text="Interactive map of filtered restaurants with unrated markers",
             focus_point=focus_point,
+            focus_restaurant_id=(
+                focus_item["restaurant_id"] if focus_item is not None else None
+            ),
         )
+
+        active_venue: RestaurantItem | None = None
+        if selected_rid is not None:
+            if focus_item is not None and focus_item["restaurant_id"] == selected_rid:
+                active_venue = focus_item
+            else:
+                try:
+                    active_venue = load_restaurant_detail(selected_rid)["restaurant"]
+                except APIError:
+                    matched_point: MapPointItem | None = next(
+                        (p for p in points if p["restaurant_id"] == selected_rid),
+                        None,
+                    )
+                    if matched_point is not None:
+                        active_venue = {
+                            "restaurant_id": matched_point["restaurant_id"],
+                            "source_restaurant_id": str(matched_point["restaurant_id"]),
+                            "source_name": matched_point.get("source_name")
+                            or "Dataset source",
+                            "source_license": matched_point.get("source_license")
+                            or "License unspecified",
+                            "name": matched_point["name"],
+                            "country_name": matched_point["country_name"],
+                            "iso_code": "",
+                            "city_name": matched_point["city_name"],
+                            "locality": matched_point.get("locality"),
+                            "address": None,
+                            "latitude": matched_point["latitude"],
+                            "longitude": matched_point["longitude"],
+                            "cuisines": list(matched_point.get("cuisines") or []),
+                            "cuisine_groups": [],
+                            "avg_cost_for_two": matched_point.get("avg_cost_for_two"),
+                            "currency_code": matched_point.get("currency_code"),
+                            "avg_cost_for_two_usd": matched_point.get(
+                                "avg_cost_for_two_usd"
+                            ),
+                            "price_range": matched_point.get("price_range"),
+                            "rating": matched_point.get("rating"),
+                            "rating_text": matched_point.get("rating_text"),
+                            "votes": None,
+                            "has_table_booking": False,
+                            "has_online_delivery": False,
+                            "distance_m": None,
+                        }
+        elif focus_item is not None:
+            active_venue = focus_item
+
+        if active_venue is not None:
+            rid = active_venue["restaurant_id"]
+            is_saved = rid in st.session_state["saved_restaurants"]
+            is_comparing = rid in st.session_state["compare_ids"]
+            in_journey = any(
+                stop["restaurant_id"] == rid
+                for stop in st.session_state["journey_stops"]
+            )
+            with st.container(border=True, key=f"card_map_{rid}"):
+                st.subheader(escape_markdown(active_venue["name"]), anchor=False)
+                st.badge(
+                    format_location_shorthand(active_venue),
+                    icon=":material/location_on:",
+                    color="gray",
+                )
+                rating_str = format_rating(
+                    active_venue.get("rating"),
+                    active_venue.get("rating_text"),
+                )
+                cost_str = format_cost(
+                    active_venue.get("avg_cost_for_two"),
+                    active_venue.get("currency_code"),
+                    active_venue.get("avg_cost_for_two_usd"),
+                )
+                tier_str = format_price_tier(active_venue.get("price_range"))
+                cuisines = active_venue.get("cuisines") or []
+                cuisines_text = ", ".join(cuisines) if cuisines else "Cuisine unlisted"
+
+                detail_col1, detail_col2 = st.columns(2, wrap=True)
+                with detail_col1:
+                    st.markdown(f"**Rating:** {escape_markdown(rating_str)}")
+                    st.caption(
+                        f":material/restaurant: {escape_markdown(cuisines_text)}"
+                    )
+                with detail_col2:
+                    st.markdown(f"**Cost:** {escape_markdown(cost_str)}")
+                    st.caption(tier_str)
+
+                address = (active_venue.get("address") or "").strip()
+                if address:
+                    st.text(address, wrap=False)
+
+                attribution = format_source_attribution(
+                    active_venue.get("source_name"),
+                    active_venue.get("source_license"),
+                )
+                st.caption(f"Source: {escape_markdown(attribution)}")
+
+                directions_url = build_directions_url(active_venue)
+                with st.container(horizontal=True):
+                    if directions_url:
+                        st.link_button(
+                            "Directions",
+                            url=directions_url,
+                            icon=":material/directions:",
+                            type="primary",
+                        )
+                    st.button(
+                        "Saved" if is_saved else "Save",
+                        key=f"map_card_save_{rid}",
+                        icon=(
+                            ":material/bookmark_added:"
+                            if is_saved
+                            else ":material/bookmark:"
+                        ),
+                        on_click=toggle_saved_restaurant,
+                        args=(active_venue,),
+                    )
+                    st.button(
+                        "Comparing" if is_comparing else "Compare",
+                        key=f"map_card_cmp_{rid}",
+                        icon=":material/compare_arrows:",
+                        on_click=add_to_compare,
+                        args=(active_venue,),
+                    )
+                    st.button(
+                        "In Journey" if in_journey else "+Journey",
+                        key=f"map_card_jrn_{rid}",
+                        icon=":material/route:",
+                        on_click=add_to_journey,
+                        args=(active_venue,),
+                    )

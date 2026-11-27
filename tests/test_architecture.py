@@ -11,7 +11,7 @@ BACKEND_DIR = ROOT_DIR / "web" / "backend"
 STREAMLIT_DIR = ROOT_DIR / "web" / "streamlit"
 SQL_DIR = ROOT_DIR / "sql"
 
-RAW_HTML_ALLOWED: set[str] = set()
+RAW_HTML_ALLOWED: set[str] = {"web/streamlit/components/card_styles.py"}
 SINGLE_SETTINGS_READERS: set[Path] = {
     (PIPELINE_DIR / "settings.py").resolve(),
     (BACKEND_DIR / "settings.py").resolve(),

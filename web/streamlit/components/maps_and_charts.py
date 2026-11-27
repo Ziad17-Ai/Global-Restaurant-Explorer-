@@ -12,6 +12,7 @@ import streamlit as st
 
 from web.streamlit.api_client import MapPointItem, RestaurantItem
 from web.streamlit.components.formatters import (
+    build_directions_url,
     format_cost,
     format_rating,
     format_source_attribution,
@@ -235,6 +236,7 @@ def build_map_points_df(
                     item.get("source_name"),
                     item.get("source_license"),
                 ),
+                "directions_url": build_directions_url(item) or "",
                 "marker_color": _rating_color(rating, dark_mode=dark_mode),
                 "marker_size": MARKER_SIZE_PX,
             }
@@ -298,6 +300,55 @@ def _apply_map_chrome(
     )
 
 
+def _extract_selected_restaurant_id(
+    chart_event: object,
+    points_df: pd.DataFrame,
+) -> int | None:
+    """Safely extract a clicked marker's restaurant_id from Plotly selection state."""
+    selection = getattr(chart_event, "selection", None)
+    if selection is None:
+        return None
+    points = (
+        selection.get("points")
+        if isinstance(selection, dict)
+        else getattr(selection, "points", None)
+    )
+    if not points:
+        return None
+    first_point = points[0]
+    customdata = (
+        first_point.get("customdata")
+        if isinstance(first_point, dict)
+        else getattr(first_point, "customdata", None)
+    )
+    if isinstance(customdata, (list, tuple)) and customdata:
+        raw_id = customdata[0]
+        if isinstance(raw_id, (int, float)):
+            return int(raw_id)
+    if isinstance(customdata, (int, float)):
+        return int(customdata)
+
+    point_lat = (
+        first_point.get("lat")
+        if isinstance(first_point, dict)
+        else getattr(first_point, "lat", None)
+    )
+    point_lon = (
+        first_point.get("lon")
+        if isinstance(first_point, dict)
+        else getattr(first_point, "lon", None)
+    )
+    if isinstance(point_lat, (int, float)) and isinstance(point_lon, (int, float)):
+        tol = 1e-6
+        matched = points_df[
+            (points_df["latitude"] - float(point_lat)).abs().lt(tol)
+            & (points_df["longitude"] - float(point_lon)).abs().lt(tol)
+        ]
+        if not matched.empty:
+            return int(matched.iloc[0]["restaurant_id"])
+    return None
+
+
 def render_restaurant_map(
     items: Sequence[RestaurantItem | MapPointItem],
     *,
@@ -305,7 +356,8 @@ def render_restaurant_map(
     alt_text: str,
     height: int = MAP_HEIGHT_PX,
     focus_point: tuple[float, float, str] | None = None,
-) -> None:
+    focus_restaurant_id: int | None = None,
+) -> int | None:
     """Render an interactive restaurant map with native basemap switcher and table."""
     dark_mode = is_dark_theme()
     points_df = build_map_points_df(items, dark_mode=dark_mode)
@@ -315,9 +367,10 @@ def render_restaurant_map(
             title="Map view unavailable",
             icon=":material/location_off:",
         )
-        return
+        return None
 
     map_tab, table_tab = st.tabs(["Map view", "Data table"])
+    selected_restaurant_id: int | None = None
 
     with map_tab:
         map_view = get_default_map_view(dark_mode=dark_mode)
@@ -348,12 +401,14 @@ def render_restaurant_map(
             color_discrete_map=get_rating_color_map(dark_mode=dark_mode),
             category_orders={"rating_tier": list(RATING_TIER_ORDER)},
             hover_name="name",
+            custom_data=["restaurant_id"],
             hover_data={
                 "city_name": True,
                 "country_name": True,
                 "rating_display": True,
                 "cost_display": True,
                 "attribution": True,
+                "restaurant_id": False,
                 "latitude": False,
                 "longitude": False,
                 "rating_tier": False,
@@ -373,17 +428,18 @@ def render_restaurant_map(
         fig.update_traces(marker={"size": MARKER_SIZE_PX, "opacity": 0.92})
 
         if focus_point is not None:
-            fig.add_trace(
-                go.Scattermap(
-                    lat=[center_lat],
-                    lon=[center_lon],
-                    mode="markers",
-                    name="Focused venue",
-                    text=[focus_name],
-                    hoverinfo="text",
-                    marker={"size": FOCUS_MARKER_SIZE_PX, "color": focus_color},
-                )
-            )
+            focus_trace_kwargs: dict[str, object] = {
+                "lat": [center_lat],
+                "lon": [center_lon],
+                "mode": "markers",
+                "name": "Focused venue",
+                "text": [focus_name],
+                "hoverinfo": "text",
+                "marker": {"size": FOCUS_MARKER_SIZE_PX, "color": focus_color},
+            }
+            if focus_restaurant_id is not None:
+                focus_trace_kwargs["customdata"] = [[focus_restaurant_id]]
+            fig.add_trace(go.Scattermap(**focus_trace_kwargs))
 
         _apply_map_chrome(
             fig,
@@ -394,18 +450,21 @@ def render_restaurant_map(
             dark_mode=dark_mode,
             map_view=map_view,
         )
-        st.plotly_chart(
+        chart_event = st.plotly_chart(
             fig,
             width="stretch",
             theme="streamlit",
             key=key,
+            on_select="rerun",
+            selection_mode="points",
             config={"scrollZoom": True, "displayModeBar": True},
             alt=alt_text,
         )
+        selected_restaurant_id = _extract_selected_restaurant_id(chart_event, points_df)
         st.caption(
-            "Use the in-map layer dropdown to switch between Standard (OSM), Terrain, "
-            "Satellite, Topographic, and Dark views, or click a rating tier in the "
-            "legend to toggle markers."
+            "Click any marker to inspect venue details and open Directions, "
+            "use the in-map layer dropdown to switch basemaps, or click a rating "
+            "tier in the legend to toggle markers."
         )
 
     with table_tab:
@@ -418,6 +477,7 @@ def render_restaurant_map(
             "rating_display",
             "rating_tier",
             "cost_display",
+            "directions_url",
             "latitude",
             "longitude",
             "attribution",
@@ -432,6 +492,7 @@ def render_restaurant_map(
                 "rating_display": "Rating",
                 "rating_tier": "Tier",
                 "cost_display": "Cost for two",
+                "directions_url": "Directions",
                 "latitude": "Latitude",
                 "longitude": "Longitude",
                 "attribution": "Source & License",
@@ -441,8 +502,16 @@ def render_restaurant_map(
             table_df,
             width="stretch",
             hide_index=True,
+            column_config={
+                "Directions": st.column_config.LinkColumn(
+                    "Directions",
+                    display_text="Open in Maps",
+                ),
+            },
             alt=f"Tabular equivalent for: {alt_text}",
         )
+
+    return selected_restaurant_id
 
 
 def render_journey_route_map(

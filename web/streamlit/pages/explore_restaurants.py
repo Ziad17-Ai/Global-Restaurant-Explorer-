@@ -7,7 +7,6 @@ import streamlit as st
 
 from web.streamlit.api_client import (
     APIError,
-    RestaurantItem,
     RestaurantListResponse,
 )
 from web.streamlit.components.feedback import (
@@ -16,7 +15,6 @@ from web.streamlit.components.feedback import (
     render_freshness_banner,
 )
 from web.streamlit.components.formatters import (
-    escape_markdown,
     format_cost,
     format_price_tier,
     format_rating,
@@ -29,7 +27,6 @@ from web.streamlit.components.state import (
     load_countries,
     load_cuisines,
     load_pipeline_status,
-    load_restaurant_detail,
     load_restaurants,
 )
 from web.streamlit.constants import (
@@ -257,12 +254,7 @@ if list_resp is not None:
     else:
         with st.grid(2, min_column_width=320):
             for item in items:
-                if render_restaurant_card(
-                    item,
-                    key_prefix="explore",
-                    show_details_button=True,
-                ):
-                    st.session_state["selected_restaurant_id"] = item["restaurant_id"]
+                render_restaurant_card(item, key_prefix="explore")
 
     if total > page_limit:
         st.divider()
@@ -283,71 +275,3 @@ if list_resp is not None:
             ):
                 st.session_state["explore_offset"] = current_offset + page_limit
                 st.rerun()
-
-selected_rid: int | None = st.session_state.get("selected_restaurant_id")
-if selected_rid is not None:
-    st.divider()
-    header_col, close_col = st.columns([4, 1], vertical_alignment="center")
-    with header_col:
-        st.subheader("Venue dossier")
-    with close_col:
-        if st.button("Close dossier", icon=":material/close:", width="stretch"):
-            st.session_state["selected_restaurant_id"] = None
-            st.rerun()
-
-    try:
-        detail_resp = load_restaurant_detail(selected_rid)
-        venue: RestaurantItem = detail_resp["restaurant"]
-        with st.container(border=True):
-            st.markdown(f"### {escape_markdown(venue['name'])}")
-            st.text(
-                f"{venue.get('address') or 'Address unlisted'} · "
-                f"{venue['city_name']}, {venue['country_name']}"
-            )
-            rating_str = escape_markdown(
-                format_rating(venue.get("rating"), venue.get("rating_text"))
-            )
-            cost_str = escape_markdown(
-                format_cost(
-                    venue.get("avg_cost_for_two"),
-                    venue.get("currency_code"),
-                    venue.get("avg_cost_for_two_usd"),
-                )
-            )
-            source_str = escape_markdown(
-                format_source_attribution(
-                    venue.get("source_name"),
-                    venue.get("source_license"),
-                )
-            )
-            st.markdown(
-                f"**Rating:** {rating_str}  \n"
-                f"**Cost:** {cost_str}  \n"
-                f"**Source:** {source_str}"
-            )
-
-        nearby_items = detail_resp.get("nearby") or []
-        similar_items = detail_resp.get("similar") or []
-        if nearby_items or similar_items:
-            nearby_tab, similar_tab = st.tabs(
-                [
-                    f"Nearby venues ({len(nearby_items)})",
-                    f"Similar cuisine ({len(similar_items)})",
-                ]
-            )
-            with nearby_tab:
-                if nearby_items:
-                    with st.grid(2, min_column_width=300):
-                        for near in nearby_items:
-                            render_restaurant_card(near, key_prefix="detail_near")
-                else:
-                    st.caption("No nearby venues with coordinates were returned.")
-            with similar_tab:
-                if similar_items:
-                    with st.grid(2, min_column_width=300):
-                        for sim in similar_items:
-                            render_restaurant_card(sim, key_prefix="detail_sim")
-                else:
-                    st.caption("No similar venues were returned.")
-    except APIError as exc:
-        render_api_error(exc)
