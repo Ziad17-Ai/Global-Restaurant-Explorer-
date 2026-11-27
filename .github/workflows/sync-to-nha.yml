@@ -1,6 +1,27 @@
+# ==============================================================================
+# Mirror Repository History to NHA Academy Repository (https://github.com/nhahub/NHA-5-083)
+# ==============================================================================
+#
+# Procedure:
+#   1. Triggers daily at 03:00 UTC or via manual `workflow_dispatch` with
+#      `source_ref`, `destination_branch`, and `dry_run` (`true` by default).
+#   2. Fetches full commit/tag history from this repository into `sync-workspace`.
+#   3. When `dry_run == 'false'`, fetches the destination NHA repo, verifies a
+#      clean fast-forward (`git merge-base --is-ancestor`) so unexpected remote
+#      commits are never overwritten, pushes exact commit history (and `v*` tags),
+#      and writes a run summary to `$GITHUB_STEP_SUMMARY`.
+#
+# Security & Required GitHub Configuration:
+#   - Required Repository Secret: `NHA_REPO_TOKEN` — fine-grained or classic
+#     Personal Access Token (PAT) with `repo` / `Contents: Read & Write` scope
+#     for both this repository and the target NHA repository.
+#   - Required Repository Variable: `NHA_REPO` (e.g., `nhahub/NHA-5-083`).
+#   - Concurrency lock (`sync-to-nha`, `cancel-in-progress: false`) prevents
+#     overlapping pushes; `permissions: contents: read` restricts the local
+#     `GITHUB_TOKEN`.
+# ==============================================================================
+
 name: Sync to NHA repository
-# NHA repo URL: https://github.com/nhahub/NHA-5-083
-# requires a personal access token with repo scope stored in the NHA_REPO_TOKEN secret & the NHA_REPO variable set to the NHA repository name (above).
 
 on:
   workflow_dispatch:

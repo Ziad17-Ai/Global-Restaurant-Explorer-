@@ -1,3 +1,25 @@
+# ==============================================================================
+# CI Quality Gates (Formatting, Linting, Type Checking, and Tests)
+# ==============================================================================
+#
+# Procedure:
+#   1. Triggers on pull requests to `main`, pushes to `main` or
+#      `refactor/infra-increment1-platform`, and manual `workflow_dispatch`.
+#   2. Installs Python 3.12 dependencies with pip caching across `pipeline/`,
+#      `web/backend/`, and `web/streamlit/`.
+#   3. Runs four mandatory quality gates in order:
+#      - `ruff format --check pipeline web tests`
+#      - `ruff check pipeline web tests`
+#      - `mypy .`
+#      - `pytest -v` (unit, architecture boundaries, DAG import, AppTest smoke)
+#
+# Security & Environment Model:
+#   - Zero Repository Secrets required: all `env:` values below are synthetic
+#     CI placeholders (`APP_ENV=ci`) that satisfy `pydantic-settings` `SecretStr`
+#     fail-fast validation without touching any real database or external API.
+#   - Minimal permissions (`GITHUB_TOKEN` default read-only checkout).
+# ==============================================================================
+
 name: CI Quality Gates
 
 on:
