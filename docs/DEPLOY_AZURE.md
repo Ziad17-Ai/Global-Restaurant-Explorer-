@@ -1,6 +1,6 @@
 # Production Deployment Guide on Microsoft Azure
 
-> **Last updated:** 2026-11-26  
+> **Last updated:** 2026-11-27  
 > **Target Environment:** Microsoft Azure (`Azure for Students`, \$100 credit budget)  
 > **Portability Note:** Anyone can deploy this repository to their own Azure subscription and GitHub fork. Globally unique resource names (ACR, Storage Account, Key Vault, MySQL server) and generated Container Apps URLs will differ per deployment — replace `<suffix>`, `<your-region>`, and `<your-...-fqdn>` with your own values.
 
@@ -13,6 +13,51 @@ This guide provides **three independent deployment tracks** — pick whichever m
 - **Track A — Manual CLI Workflow (Without MCPs/Agents):** Reproducible PowerShell/Bash `az` + `gh` scripts.
 - **Track B — Agentic / MCP-Assisted Workflow:** Delegated setup using AI coding agents, `azure-mcp`, and the `browser` subagent.
 - **Track C — Manual Web UI Workflow (Azure Portal + GitHub Web UI):** Point-and-click deployment directly through [portal.azure.com](https://portal.azure.com) with links to official Microsoft Learn guides.
+
+---
+
+## 0. Choosing a Deployment Strategy, Cold Starts & Cost Management
+
+Before provisioning resources, pick the hosting profile that fits your budget and latency goals. This project defaults to **Azure Container Apps (Consumption, `min-replicas = 0`)** to maximize the \$100 Azure for Students credit, which trades a one-time cold start after idleness for near-\$0 idle compute.
+
+```mermaid
+flowchart TD
+    Start["Choose Azure Hosting Strategy"] --> Q1{"Priority: Minimize<br/>Student Credit Spend?"}
+    Q1 -- "Yes (Default)" --> OptA["ACA Consumption (min-replicas = 0)<br/>Cooldown: 1800s (30 min)<br/>Flip min-replicas = 1 during demos<br/>~$5–$7/mo* (~$22/mo without MySQL grant)"]
+    Q1 -- "No, need 0s cold start 24/7" --> Q2{"Want Managed Containers<br/>+ Automated CI/CD?"}
+    Q2 -- "Yes" --> OptB["ACA Always-Warm (min-replicas = 1)<br/>Streamlit 0.25 vCPU / 0.5Gi + Backend 0.5 vCPU / 1Gi<br/>+$16/mo over baseline"]
+    Q2 -- "Prefer flat fixed tier" --> OptD["Azure App Service Linux B1 (Always On)<br/>~$13/mo flat compute<br/>(keep ACA Job or GH Actions for weekly ETL)"]
+    Q2 -- "Prefer single VM / full control" --> OptE["Azure Linux VM (Standard_B1ms)<br/>Docker Compose + Caddy/Nginx TLS<br/>~$12–$15/mo (self-managed OS/TLS)"]
+```
+
+### Alternative Approaches Comparison (`polandcentral` Retail Rates)
+
+| Strategy | Cold Start | Warm Page Load | Est. Monthly Cost (`polandcentral`) | Trade-Offs |
+| --- | --- | --- | --- | --- |
+| **A. ACA Scale-to-Zero + 30-min Cooldown + Demo Warmup** *(Default in this guide)* | 15–25s on first visit after 30 min idle; **0s** during active sessions & demos | < 1–2s | **~\$5–\$7/mo** *(with 12-mo Student MySQL `B1ms` grant)* or **~\$22–\$24/mo** *(full retail)* | Best credit runway; chained cold start (Streamlit ~6–10s + Backend/ONNX ~8–15s) only after cooldown expires |
+| **B. ACA Always-Warm** (`min-replicas = 1`, right-sized Streamlit `0.25 vCPU / 0.5 GiB`) | **0s** (always instant) | < 1–2s | Baseline **+ \$16.10/mo** *(or +\$22/mo at `0.5 vCPU / 1 GiB` each)* | Zero cold starts while keeping full per-service container isolation and CI/CD |
+| **C. ACA Backend-Only Warm** (`min-replicas = 1` on backend only) | ~6–10s (Streamlit only) | < 1–2s | Baseline **+ \$10.20/mo** | Cuts cold start roughly in half at lower idle cost |
+| **D. Azure App Service Linux `B1`** (`Always On` enabled) | **0s** | < 1–2s | **~\$13/mo** flat compute + MySQL/ACR/Storage | Predictable flat rate, but requires co-hosting or 2 plans and a separate scheduler for weekly ETL |
+| **E. Single Azure Linux VM (`Standard_B1ms`)** + Docker Compose | **0s** | < 1–2s | **~\$12–\$15/mo** + storage | Full control & zero cold starts, but you manually manage OS updates, TLS certificates, and restarts |
+| **F. Streamlit Community Cloud (Free) + Warm Azure Backend** | **0s** *(frontend sleeps only after days)* | < 1–2s | Baseline **+ \$10.20/mo** (backend only) | Free frontend hosting while keeping FastAPI, ONNX NLP, and MySQL securely on Azure |
+
+### Tuning Cold Starts & Demo Warmup in Azure Portal (`App → Scale`)
+
+To keep day-to-day costs low while guaranteeing **0s cold starts** during presentations or grading:
+
+1. In [portal.azure.com](https://portal.azure.com), open **`rg-eatosphere-prod`** → **`ca-eatosphere-backend`** (and repeat for **`ca-eatosphere-streamlit`**).
+2. In the left sidebar under **App**, click **Scale**.
+3. Edit the fields directly in the **Scale rule settings** panel:
+   - **Cooldown period:** set to **`1800`** (30 minutes, up from default `300`s) so once a user opens the app, it stays warm for the full session.
+   - **Polling interval:** keep at **`30`** seconds.
+   - **Before a demo / grading:** set **Min replicas** to **`1`** (`~\$0.03/hour` while warm for both apps).
+   - **After the demo:** set **Min replicas** back to **`0`** to restore \$0 idle compute.
+4. Click **Save** / deploy the updated revision (~30–60s).
+
+### Cost Monitoring & Student Credit Alerts
+
+- **Azure for Students credit balance:** Open **Azure Portal → Education → Overview** (or [microsoftazuresponsorships.com/Balance](https://www.microsoftazuresponsorships.com/Balance)). Note that Azure Cost Management's **Forecast** chart requires **2–3+ days** of metered billing history before showing projected spend on newly provisioned resources.
+- **Budget alerts:** Open **Azure Portal → Cost Management → Budgets → + Add**, set a monthly cap (e.g., `\$25`), and configure email alerts at `50%`, `80%`, and `100%`.
 
 ---
 
